@@ -6,9 +6,14 @@ alwaysApply: true
 # Lab core
 
 ```text
-Web → Gateway → Trip | Booking | Payment → PostgreSQL
-                 ↕ RabbitMQ
+Web → API Gateway → Trip | Booking | Payment → PostgreSQL
+                     ↕ RabbitMQ
 Grafana LGTM (:3005) ← OTLP
+
+apps/
+  web/
+  api/   ← Nest backends
+    api-gateway | trip-service | booking-service | payment-service
 ```
 
 Booking dono da Reservation. Payment dono do Payment. Trip projeta assentos.

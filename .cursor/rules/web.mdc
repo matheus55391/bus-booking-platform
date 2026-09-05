@@ -1,17 +1,23 @@
 ---
-description: Frontend — RSC + RHF/Zod/TanStack Query
+description: Frontend — src/ com api, hooks, schemas, context, types
 globs: apps/web/**/*
 alwaysApply: false
 ---
 
-# Web
+# Web (`apps/web/src`)
 
 ```text
-RSC: busca, lista, dados iniciais da viagem
-Client: mapa, seleção, reserva/pagamento (RHF + Zod + TanStack Query)
+src/
+  app/          RSC (busca, lista, dados iniciais)
+  api/          serviços HTTP (trips, reservations, payments)
+  components/   UI
+  context/      providers (TanStack Query)
+  hooks/        react-query hooks
+  schemas/      Zod
+  types/        tipos de domínio
+  lib/          format helpers
 ```
 
-- Só fala com o Gateway (`GATEWAY_URL` / `NEXT_PUBLIC_GATEWAY_URL`)
+- Só fala com `api-gateway` (`NEXT_PUBLIC_API_GATEWAY_URL` / `API_GATEWAY_URL`)
+- Busca: RHF + Zod · Reserva: TanStack Query
 - `Idempotency-Key` em reserve e pay
-- Formulário de busca: React Hook Form + Zod
-- Assentos/reserva: TanStack Query (queries + mutations)

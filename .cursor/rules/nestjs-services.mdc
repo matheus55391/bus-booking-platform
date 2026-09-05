@@ -1,14 +1,14 @@
 ---
 description: NestJS services — booking, payment, eventos, observabilidade
-globs: apps/{gateway,trip-service,booking-service,payment-service}/**/*
+globs: apps/api/{api-gateway,trip-service,booking-service,payment-service}/**/*
 alwaysApply: false
 ---
 
 # NestJS services
 
+- `api-gateway`: só proxy HTTP; encaminha `Idempotency-Key`
 - Trip: catálogo + projeção de assentos via eventos `seat.*`
 - Booking: dono de Reservation; hold 10 min; confirma em `payment.approved`
-- Payment: dono de Payment; mock gateway; publica `payment.approved`
-- Gateway: só proxy; encaminha `Idempotency-Key`
+- Payment: dono de Payment; mock gateway externo; publica `payment.approved`
 - Prisma clients: `@bus/trip-prisma`, `@bus/booking-prisma`, `@bus/payment-prisma`
 - OTEL → `OTEL_EXPORTER_OTLP_ENDPOINT` (Grafana LGTM); `/metrics` Prometheus

@@ -3,8 +3,14 @@
 MVP de estudo — busca, reserva temporária, pagamento e observabilidade.
 
 ```text
-Web → Gateway → Booking → RabbitMQ → Payment → RabbitMQ → Booking (CONFIRMED)
-                         ↘ RabbitMQ → Trip (projeção do assento)
+apps/
+  web/
+  api/   # api-gateway · trip · booking · payment
+```
+
+```text
+Web → API Gateway → Booking → RabbitMQ → Payment → RabbitMQ → Booking (CONFIRMED)
+                              ↘ RabbitMQ → Trip (projeção do assento)
 ```
 
 ## Subir
@@ -19,7 +25,7 @@ pnpm dev
 | URL | Serviço |
 |-----|---------|
 | http://localhost:3000 | Web |
-| http://localhost:3001 | Gateway |
+| http://localhost:3001 | API Gateway |
 | http://localhost:3005 | Grafana (Prometheus / Loki / Tempo via OTLP) |
 | http://localhost:15672 | RabbitMQ UI (bus/bus) |
 

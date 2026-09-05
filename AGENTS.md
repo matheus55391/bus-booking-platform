@@ -3,9 +3,17 @@
 ## Arquitetura
 
 ```text
-Web → Gateway → Trip | Booking | Payment → PostgreSQL
-                 ↕ RabbitMQ (trace context)
+Web → API Gateway → Trip | Booking | Payment → PostgreSQL
+                     ↕ RabbitMQ (trace context)
 Apps → OTLP :4318 → Grafana LGTM (Prometheus + Loki + Tempo)
+
+apps/
+  web/
+  api/          # backends Nest
+    api-gateway/
+    trip-service/
+    booking-service/
+    payment-service/
 ```
 
 ## Observabilidade (mínimo)
@@ -18,18 +26,16 @@ Apps → OTLP :4318 → Grafana LGTM (Prometheus + Loki + Tempo)
 | `/metrics` | scrape Prometheus local por serviço |
 | Grafana | http://localhost:3005 |
 
-Sem alertas / SLO neste momento.
-
 ## Portas
 
-| App | Porta |
-|-----|------:|
-| web | 3000 |
-| gateway | 3001 |
-| trip | 3002 |
-| booking | 3003 |
-| payment | 3004 |
-| Grafana LGTM | 3005 |
+| App | Porta | Path |
+|-----|------:|------|
+| web | 3000 | `apps/web` |
+| api-gateway | 3001 | `apps/api/api-gateway` |
+| trip | 3002 | `apps/api/trip-service` |
+| booking | 3003 | `apps/api/booking-service` |
+| payment | 3004 | `apps/api/payment-service` |
+| Grafana LGTM | 3005 | — |
 
 ```sh
 pnpm docker:up && pnpm db:setup && pnpm dev
