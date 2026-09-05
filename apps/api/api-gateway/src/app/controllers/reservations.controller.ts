@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Headers,
-  Param,
-  Post,
-} from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
 import { AppService, BookingTopics } from '@repo/common';
 import { requireIdempotencyKey } from '../pipes/idempotency-key.pipe';
 import { RmqClientService } from '../services/rmq-client.service';

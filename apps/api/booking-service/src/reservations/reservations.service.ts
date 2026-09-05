@@ -194,7 +194,9 @@ export class ReservationsService implements OnModuleInit {
       where: { id: event.reservationId },
     });
     if (!reservation) {
-      this.logger.warn(`Payment for unknown reservation ${event.reservationId}`);
+      this.logger.warn(
+        `Payment for unknown reservation ${event.reservationId}`,
+      );
       return;
     }
     if (reservation.status === ReservationStatus.CONFIRMED) {
@@ -277,7 +279,9 @@ export class ReservationsService implements OnModuleInit {
       }
 
       if (expired.length > 0) {
-        this.logger.log(`Expired ${expired.length} reservation(s); seats released`);
+        this.logger.log(
+          `Expired ${expired.length} reservation(s); seats released`,
+        );
       }
     } catch (error) {
       this.logger.error('Failed to expire reservations', error as Error);

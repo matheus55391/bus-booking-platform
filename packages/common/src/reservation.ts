@@ -1,8 +1,5 @@
 export type ReservationStatus =
-  | 'RESERVED'
-  | 'CONFIRMED'
-  | 'EXPIRED'
-  | 'CANCELLED';
+  "RESERVED" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
 
 export type CreateReservationInput = {
   tripId: string;

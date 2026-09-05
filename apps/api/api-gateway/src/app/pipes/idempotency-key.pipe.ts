@@ -1,9 +1,4 @@
-import {
-  ArgumentMetadata,
-  BadRequestException,
-  Injectable,
-  PipeTransform,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
 
 export function requireIdempotencyKey(value?: string): string {
   const key = value?.trim();
@@ -15,8 +10,11 @@ export function requireIdempotencyKey(value?: string): string {
 
 /** Pipe pronto para uso em params/body quando o decorator aceitar. */
 @Injectable()
-export class IdempotencyKeyPipe implements PipeTransform<string | undefined> {
-  transform(value: string | undefined, _metadata: ArgumentMetadata) {
+export class IdempotencyKeyPipe implements PipeTransform<
+  string | undefined,
+  string
+> {
+  transform(value: string | undefined): string {
     return requireIdempotencyKey(value);
   }
 }

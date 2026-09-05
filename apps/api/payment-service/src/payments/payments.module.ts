@@ -4,8 +4,7 @@ import { AppService, ServiceQueues } from '@repo/common';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 
-const rabbitUrl =
-  process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
+const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
 
 @Module({
   imports: [

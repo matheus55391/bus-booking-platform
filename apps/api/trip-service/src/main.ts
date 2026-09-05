@@ -9,8 +9,7 @@ async function bootstrap() {
   const log = createLogger('trip-service');
   const app = await NestFactory.create(AppModule, { logger: false });
 
-  const rabbitUrl =
-    process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
+  const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
@@ -25,4 +24,5 @@ async function bootstrap() {
   await app.listen(port);
   log.info('listening', { port, queue: ServiceQueues.Trip });
 }
-bootstrap();
+
+void bootstrap();

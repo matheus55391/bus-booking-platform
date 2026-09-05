@@ -1,21 +1,26 @@
-import { context, propagation, trace, SpanStatusCode } from '@opentelemetry/api';
-import type { Span } from '@opentelemetry/api';
-import { logs as otelLogs, SeverityNumber } from '@opentelemetry/api-logs';
-import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { resourceFromAttributes } from '@opentelemetry/resources';
-import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { NodeSDK } from '@opentelemetry/sdk-node';
+import {
+  context,
+  propagation,
+  trace,
+  SpanStatusCode,
+} from "@opentelemetry/api";
+import type { Span } from "@opentelemetry/api";
+import { logs as otelLogs, SeverityNumber } from "@opentelemetry/api-logs";
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { NodeSDK } from "@opentelemetry/sdk-node";
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
-} from '@opentelemetry/semantic-conventions';
+} from "@opentelemetry/semantic-conventions";
 
 let sdkStarted = false;
-let serviceNameGlobal = 'unknown';
+let serviceNameGlobal = "unknown";
 
 export function getServiceName() {
   return serviceNameGlobal;
@@ -27,11 +32,11 @@ export async function startTelemetry(serviceName: string) {
   serviceNameGlobal = serviceName;
 
   const endpoint =
-    process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? 'http://localhost:4318';
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://localhost:4318";
 
   const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: serviceName,
-    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION ?? '0.0.1',
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION ?? "0.0.1",
   });
 
   const sdk = new NodeSDK({
@@ -54,9 +59,9 @@ export async function startTelemetry(serviceName: string) {
     ],
     instrumentations: [
       getNodeAutoInstrumentations({
-        '@opentelemetry/instrumentation-fs': { enabled: false },
-        '@opentelemetry/instrumentation-dns': { enabled: false },
-        '@opentelemetry/instrumentation-net': { enabled: false },
+        "@opentelemetry/instrumentation-fs": { enabled: false },
+        "@opentelemetry/instrumentation-dns": { enabled: false },
+        "@opentelemetry/instrumentation-net": { enabled: false },
       }),
     ],
   });
@@ -66,8 +71,8 @@ export async function startTelemetry(serviceName: string) {
   const shutdown = async () => {
     await sdk.shutdown();
   };
-  process.on('SIGTERM', () => void shutdown());
-  process.on('SIGINT', () => void shutdown());
+  process.on("SIGTERM", () => void shutdown());
+  process.on("SIGINT", () => void shutdown());
 }
 
 export function getTracer(name = serviceNameGlobal) {
@@ -77,7 +82,7 @@ export function getTracer(name = serviceNameGlobal) {
 export function getCurrentTraceId(): string | undefined {
   const span = trace.getSpan(context.active());
   const id = span?.spanContext().traceId;
-  if (!id || id === '00000000000000000000000000000000') return undefined;
+  if (!id || id === "00000000000000000000000000000000") return undefined;
   return id;
 }
 
@@ -94,23 +99,23 @@ export function extractTraceContext(
 ): ReturnType<typeof context.active> {
   const stringCarrier: Record<string, string> = {};
   for (const [k, v] of Object.entries(carrier)) {
-    if (typeof v === 'string') stringCarrier[k] = v;
+    if (typeof v === "string") stringCarrier[k] = v;
   }
   return propagation.extract(context.active(), stringCarrier);
 }
 
 export function withExtractedContext<T>(
   carrier: Record<string, unknown>,
-  fn: () => Promise<T>,
+  fn: () => T | Promise<T>,
 ): Promise<T> {
   const ctx = extractTraceContext(carrier);
-  return context.with(ctx, fn);
+  return Promise.resolve(context.with(ctx, fn));
 }
 
 export async function withSpan<T>(
   name: string,
   attributes: Record<string, string>,
-  fn: (span: Span) => Promise<T>,
+  fn: (span: Span) => T | Promise<T>,
 ): Promise<T> {
   const tracer = getTracer();
   return tracer.startActiveSpan(name, { attributes }, async (span) => {
@@ -119,7 +124,9 @@ export async function withSpan<T>(
         fn(span),
       );
     } catch (error) {
-      span.recordException(error as Error);
+      span.recordException(
+        error instanceof Error ? error : new Error(String(error)),
+      );
       span.setStatus({ code: SpanStatusCode.ERROR });
       throw error;
     } finally {
@@ -131,7 +138,7 @@ export async function withSpan<T>(
 type LogAttrs = Record<string, unknown>;
 
 function emit(
-  level: 'debug' | 'info' | 'warn' | 'error',
+  level: "debug" | "info" | "warn" | "error",
   message: string,
   attrs: LogAttrs = {},
 ) {
@@ -146,16 +153,16 @@ function emit(
   };
 
   const out = JSON.stringify(line);
-  if (level === 'error') console.error(out);
-  else if (level === 'warn') console.warn(out);
+  if (level === "error") console.error(out);
+  else if (level === "warn") console.warn(out);
   else console.log(out);
 
   const severity =
-    level === 'error'
+    level === "error"
       ? SeverityNumber.ERROR
-      : level === 'warn'
+      : level === "warn"
         ? SeverityNumber.WARN
-        : level === 'debug'
+        : level === "debug"
           ? SeverityNumber.DEBUG
           : SeverityNumber.INFO;
 
@@ -166,7 +173,7 @@ function emit(
       body: message,
       attributes: {
         service: serviceNameGlobal,
-        traceId: traceId ?? '',
+        traceId: traceId ?? "",
         ...Object.fromEntries(
           Object.entries(attrs).map(([k, v]) => [k, String(v)]),
         ),
@@ -178,15 +185,15 @@ function emit(
 }
 
 export function createLogger(scope?: string) {
-  const prefix = scope ? `[${scope}] ` : '';
+  const prefix = scope ? `[${scope}] ` : "";
   return {
     debug: (message: string, attrs?: LogAttrs) =>
-      emit('debug', `${prefix}${message}`, attrs),
+      emit("debug", `${prefix}${message}`, attrs),
     info: (message: string, attrs?: LogAttrs) =>
-      emit('info', `${prefix}${message}`, attrs),
+      emit("info", `${prefix}${message}`, attrs),
     warn: (message: string, attrs?: LogAttrs) =>
-      emit('warn', `${prefix}${message}`, attrs),
+      emit("warn", `${prefix}${message}`, attrs),
     error: (message: string, attrs?: LogAttrs) =>
-      emit('error', `${prefix}${message}`, attrs),
+      emit("error", `${prefix}${message}`, attrs),
   };
 }

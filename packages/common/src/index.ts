@@ -6,8 +6,8 @@
  *
  * Eventos de domínio (seat.*, payment.*) ficam em `@repo/events`.
  */
-export type * from './trip';
-export type * from './reservation';
-export type * from './payment';
-export * from './messaging';
-export * from './topics';
+export type * from "./trip";
+export type * from "./reservation";
+export type * from "./payment";
+export * from "./messaging";
+export * from "./topics";

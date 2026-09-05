@@ -1,8 +1,4 @@
-export type PaymentStatus =
-  | 'PENDING'
-  | 'APPROVED'
-  | 'FAILED'
-  | 'REFUNDED';
+export type PaymentStatus = "PENDING" | "APPROVED" | "FAILED" | "REFUNDED";
 
 export type CreatePaymentInput = {
   reservationId: string;

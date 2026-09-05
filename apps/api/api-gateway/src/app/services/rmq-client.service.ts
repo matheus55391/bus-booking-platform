@@ -22,8 +22,8 @@ export class RmqClientService {
       case AppService.Payment:
         return this.payment;
       default: {
-        const _exhaustive: never = service;
-        throw new Error(`Unknown service: ${_exhaustive}`);
+        const unexpected: never = service;
+        throw new Error(`Unknown service token: ${String(unexpected)}`);
       }
     }
   }

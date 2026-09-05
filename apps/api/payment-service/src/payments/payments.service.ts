@@ -69,7 +69,9 @@ export class PaymentsService {
     try {
       reservation = await firstValueFrom(
         this.bookingClient
-          .send<Reservation>(BookingTopics.GetReservation, { id: reservationId })
+          .send<Reservation>(BookingTopics.GetReservation, {
+            id: reservationId,
+          })
           .pipe(timeout(10_000)),
       );
     } catch (error) {

@@ -10,8 +10,7 @@ import { TripsController } from './controllers/trips.controller';
 import { HealthService } from './services/health.service';
 import { RmqClientService } from './services/rmq-client.service';
 
-const rabbitUrl =
-  process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
+const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
 
 @Module({
   imports: [

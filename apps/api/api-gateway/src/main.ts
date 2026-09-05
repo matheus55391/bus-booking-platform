@@ -16,4 +16,5 @@ async function bootstrap() {
   await app.listen(port);
   log.info('listening', { port, transport: 'http→rmq' });
 }
-bootstrap();
+
+void bootstrap();
