@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/@bus/booking-prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReservationStatus {
+  RESERVED
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
+
+model Reservation {
+  id              String            @id @default(cuid())
+  tripId          String
+  seatId          String
+  userId          String
+  amountCents     Int
+  status          ReservationStatus @default(RESERVED)
+  expiresAt       DateTime
+  idempotencyKey  String            @unique
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([tripId, seatId])
+}

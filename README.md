@@ -1,34 +1,27 @@
 # Bus Booking Platform
 
-MVP de estudo — Fase 1: **busca de viagens**.
+MVP de estudo — busca, reserva temporária, pagamento e observabilidade.
 
 ```text
-Passageiro → Web → API Gateway → Trip Service → PostgreSQL
-Infra: Postgres | RabbitMQ | Redis
+Web → Gateway → Booking → RabbitMQ → Payment → RabbitMQ → Booking (CONFIRMED)
+                         ↘ RabbitMQ → Trip (projeção do assento)
 ```
 
-## Subir em dev
+## Subir
 
 ```sh
-# 1) Infra
 pnpm docker:up
-
-# 2) Dependências + DB
-cp .env.example .env
 pnpm install
 pnpm db:setup
-
-# 3) Apps
 pnpm dev
 ```
 
-| Serviço | URL |
-|---------|-----|
-| Web | http://localhost:3000 |
-| Gateway | http://localhost:3001 |
-| Trip Service | http://localhost:3002 |
-| Postgres | localhost:5432 |
-| RabbitMQ UI | http://localhost:15672 (bus/bus) |
-| Redis | localhost:6379 |
+| URL | Serviço |
+|-----|---------|
+| http://localhost:3000 | Web |
+| http://localhost:3001 | Gateway |
+| http://localhost:3005 | Grafana (Prometheus / Loki / Tempo via OTLP) |
+| http://localhost:15672 | RabbitMQ UI (bus/bus) |
 
-Busca de exemplo: **Aracaju → Salvador**, data **2026-09-10**.
+Apps exportam OTEL para `:4318`. Logs JSON no stdout incluem `traceId`.
+Métricas RED em `/metrics` de cada serviço Nest.

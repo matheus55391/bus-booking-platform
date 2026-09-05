@@ -16,6 +16,7 @@ Idioma: português brasileiro. Tom: direto, sênior.
 
 ## Fase atual
 
-Busca de viagens via Gateway. Não expandir para reserva/pagamento sem o usuário pedir.
+Busca, mapa de assentos e **reserva temporária (10 min)** via Booking Service.
+Concorrência: transação + `UPDATE Seat WHERE AVAILABLE` + unique partial index.
 
 Ao fechar conceito: **🧠 Guarda essa frase para entrevista.**

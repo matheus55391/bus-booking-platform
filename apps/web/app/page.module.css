@@ -62,6 +62,19 @@
   background: #fff;
 }
 
+.fieldError {
+  color: #a12828;
+  font-size: 0.78rem;
+}
+
+.backLink {
+  margin-top: 0.5rem;
+  color: #1f6b4f;
+  font-size: 0.92rem;
+  text-decoration: underline;
+  width: fit-content;
+}
+
 .submit {
   border: 0;
   border-radius: 8px;
@@ -116,6 +129,7 @@
   font: inherit;
   color: inherit;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .trip:hover,
@@ -238,6 +252,17 @@
   font-weight: 600;
 }
 
+.seatButton {
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.seatButton:disabled {
+  cursor: wait;
+  opacity: 0.75;
+}
+
 .seat.available {
   background: #d8efe4;
   border-color: #7ab89a;
@@ -254,4 +279,84 @@
   background: #e4e7ea;
   border-color: #9aa3ab;
   color: #6a737a;
+}
+
+.seatSelected {
+  outline: 2px solid #0f4c38;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(31, 107, 79, 0.25);
+}
+
+.hint {
+  color: #5c6670;
+  font-size: 0.9rem;
+}
+
+.success {
+  color: #145c3e;
+  background: #e5f6ee;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+}
+
+.legendItem.selectedLegend::before {
+  background: #0f4c38;
+  border-color: #0f4c38;
+}
+
+.checkout {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid #cfe0d7;
+  border-radius: 12px;
+  background: #f7fbf8;
+}
+
+.checkout h2 {
+  font-size: 1.1rem;
+}
+
+.checkoutGrid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+.checkoutGrid dt {
+  font-size: 0.75rem;
+  color: #5c6670;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.checkoutGrid dd {
+  margin-top: 0.2rem;
+  font-weight: 600;
+}
+
+.mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.payButton {
+  border: 0;
+  border-radius: 8px;
+  padding: 0.85rem 1.2rem;
+  background: #0f4c38;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.payButton:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }

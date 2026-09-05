@@ -1,0 +1,30 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/@bus/payment-prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  FAILED
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  reservationId  String
+  amountCents    Int
+  status         PaymentStatus @default(PENDING)
+  transactionId  String?
+  idempotencyKey String        @unique
+  failureReason  String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([reservationId])
+  @@index([status])
+}

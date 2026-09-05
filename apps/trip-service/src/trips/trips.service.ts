@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { SeatStatus } from '@prisma/client';
+import { SeatStatus } from '@bus/trip-prisma';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type SearchTripsQuery = {

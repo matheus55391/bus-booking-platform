@@ -1,0 +1,17 @@
+---
+description: Observabilidade mínima — OTEL, RED, JSON logs, LGTM
+alwaysApply: true
+---
+
+# Observabilidade
+
+Stack local: `grafana/otel-lgtm` (Prometheus + Loki + Tempo + Grafana).
+
+- Instrumentação: `@repo/observability` (`startTelemetry`, `ObservabilityInterceptor`)
+- Logs JSON: `service`, `level`, `timestamp`, `traceId`
+- RED: Rate / Errors / Duration em HTTP
+- Tracing: HTTP auto + RabbitMQ (headers W3C `traceparent`)
+- OTLP: `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
+- Grafana: http://localhost:3005
+
+Não adicionar alertas, SLO/SLA ou tooling extra sem pedido.

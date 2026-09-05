@@ -1,12 +1,14 @@
 ---
-description: NestJS gateway e trip-service — proxy, busca, Postgres
-globs: apps/{gateway,trip-service}/**/*
+description: NestJS services — booking, payment, eventos, observabilidade
+globs: apps/{gateway,trip-service,booking-service,payment-service}/**/*
 alwaysApply: false
 ---
 
-# NestJS services (Fase 1)
+# NestJS services
 
-- `gateway`: só roteia/proxy; sem regra de domínio de viagem.
-- `trip-service`: dono de Trip/Seat + Postgres; `GET /trips/search` e `GET /trips/:tripId/seats`.
-- Variáveis via `.env` / compose; não hardcode secrets.
-- Não acoplar RabbitMQ/Redis no fluxo de busca até haver necessidade.
+- Trip: catálogo + projeção de assentos via eventos `seat.*`
+- Booking: dono de Reservation; hold 10 min; confirma em `payment.approved`
+- Payment: dono de Payment; mock gateway; publica `payment.approved`
+- Gateway: só proxy; encaminha `Idempotency-Key`
+- Prisma clients: `@bus/trip-prisma`, `@bus/booking-prisma`, `@bus/payment-prisma`
+- OTEL → `OTEL_EXPORTER_OTLP_ENDPOINT` (Grafana LGTM); `/metrics` Prometheus

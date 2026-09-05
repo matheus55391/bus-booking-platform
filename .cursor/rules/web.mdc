@@ -1,11 +1,17 @@
 ---
-description: Frontend do passageiro — busca via Gateway
+description: Frontend — RSC + RHF/Zod/TanStack Query
 globs: apps/web/**/*
 alwaysApply: false
 ---
 
-# Web (passageiro)
+# Web
 
-- Fase 1: busca de viagens + mapa de assentos (`GET /trips/:id/seats` via Gateway).
-- Chamar **somente** o API Gateway (`NEXT_PUBLIC_GATEWAY_URL`), nunca o trip-service direto.
-- Sem painel admin neste MVP.
+```text
+RSC: busca, lista, dados iniciais da viagem
+Client: mapa, seleção, reserva/pagamento (RHF + Zod + TanStack Query)
+```
+
+- Só fala com o Gateway (`GATEWAY_URL` / `NEXT_PUBLIC_GATEWAY_URL`)
+- `Idempotency-Key` em reserve e pay
+- Formulário de busca: React Hook Form + Zod
+- Assentos/reserva: TanStack Query (queries + mutations)

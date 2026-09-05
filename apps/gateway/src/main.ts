@@ -1,8 +1,11 @@
 import { NestFactory } from '@nestjs/core';
+import { createLogger, startTelemetry } from '@repo/observability';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  await startTelemetry('gateway');
+  const log = createLogger('gateway');
+  const app = await NestFactory.create(AppModule, { logger: false });
   app.enableCors({
     origin: [
       'http://localhost:3000',
@@ -11,6 +14,6 @@ async function bootstrap() {
   });
   const port = Number(process.env.GATEWAY_PORT ?? 3001);
   await app.listen(port);
-  console.log(`gateway listening on http://localhost:${port}`);
+  log.info('listening', { port });
 }
 bootstrap();

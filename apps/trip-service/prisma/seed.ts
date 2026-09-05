@@ -1,15 +1,9 @@
-import { PrismaClient, SeatStatus } from '@prisma/client';
+import { PrismaClient, SeatStatus } from '@bus/trip-prisma';
 
 const prisma = new PrismaClient();
 
-/** Layout 2+2: A B | corredor | C D */
-const COLUMNS = [
-  { column: 0, label: 'A' },
-  { column: 1, label: 'B' },
-  { column: 2, label: 'C' },
-  { column: 3, label: 'D' },
-] as const;
-
+/** Layout 2+2: labels numéricos 1..40 (ex.: assento 15) */
+const COLUMNS = 4;
 const ROW_COUNT = 10;
 
 type TripSeed = {
@@ -19,7 +13,6 @@ type TripSeed = {
   arrivalAt: Date;
   priceCents: number;
   companyName: string;
-  /** Labels already taken (SOLD) for demo, e.g. ['1A', '3C'] */
   soldLabels?: string[];
   heldLabels?: string[];
 };
@@ -35,13 +28,14 @@ function buildSeats(opts: {
     status: SeatStatus;
   }[] = [];
 
+  let n = 1;
   for (let row = 1; row <= ROW_COUNT; row++) {
-    for (const col of COLUMNS) {
-      const label = `${row}${col.label}`;
+    for (let column = 0; column < COLUMNS; column++) {
+      const label = String(n++);
       let status: SeatStatus = SeatStatus.AVAILABLE;
       if (opts.soldLabels.includes(label)) status = SeatStatus.SOLD;
       else if (opts.heldLabels.includes(label)) status = SeatStatus.HELD;
-      seats.push({ label, row, column: col.column, status });
+      seats.push({ label, row, column, status });
     }
   }
 
@@ -49,6 +43,7 @@ function buildSeats(opts: {
 }
 
 async function main() {
+  await prisma.$executeRawUnsafe(`DELETE FROM "Reservation"`);
   await prisma.seat.deleteMany();
   await prisma.trip.deleteMany();
 
@@ -60,8 +55,8 @@ async function main() {
       arrivalAt: new Date('2026-09-10T14:30:00.000Z'),
       priceCents: 8900,
       companyName: 'Nordeste Express',
-      soldLabels: ['1A', '1B', '2C', '5A', '5B', '8D'],
-      heldLabels: ['3A'],
+      soldLabels: ['1', '2', '7', '17', '18', '32'],
+      heldLabels: ['9'],
     },
     {
       origin: 'Aracaju',
@@ -70,8 +65,8 @@ async function main() {
       arrivalAt: new Date('2026-09-10T21:15:00.000Z'),
       priceCents: 9900,
       companyName: 'Costa Verde',
-      soldLabels: ['1A', '1B', '1C', '1D', '4B', '6A', '7C', '9A', '10D'],
-      heldLabels: ['2A', '2B'],
+      soldLabels: ['1', '2', '3', '4', '14', '21', '27', '33', '40'],
+      heldLabels: ['5', '6'],
     },
     {
       origin: 'Aracaju',
@@ -80,7 +75,7 @@ async function main() {
       arrivalAt: new Date('2026-09-11T04:45:00.000Z'),
       priceCents: 7900,
       companyName: 'Nordeste Express',
-      soldLabels: ['4A', '4B'],
+      soldLabels: ['13', '14'],
       heldLabels: [],
     },
     {
@@ -90,8 +85,8 @@ async function main() {
       arrivalAt: new Date('2026-09-10T16:00:00.000Z'),
       priceCents: 8900,
       companyName: 'Costa Verde',
-      soldLabels: ['2C', '2D', '6A'],
-      heldLabels: ['1A'],
+      soldLabels: ['7', '8', '21'],
+      heldLabels: ['1'],
     },
   ];
 
@@ -119,7 +114,7 @@ async function main() {
   }
 
   console.log(
-    `Seeded ${trips.length} trips with ${ROW_COUNT * COLUMNS.length} seats each`,
+    `Seeded ${trips.length} trips with ${ROW_COUNT * COLUMNS} seats each (labels 1–40)`,
   );
 }
 

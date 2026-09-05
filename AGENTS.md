@@ -1,35 +1,36 @@
 # AGENTS.md — Bus Booking Platform
 
-Laboratório de System Design (MVP). Fase 1: busca de viagens.
-
-## Arquitetura (Fase 1)
+## Arquitetura
 
 ```text
-Passageiro → Web → API Gateway → Trip Service → PostgreSQL
-Infra: Postgres | RabbitMQ | Redis (compose)
+Web → Gateway → Trip | Booking | Payment → PostgreSQL
+                 ↕ RabbitMQ (trace context)
+Apps → OTLP :4318 → Grafana LGTM (Prometheus + Loki + Tempo)
 ```
 
-## Apps
+## Observabilidade (mínimo)
 
-| App | Papel | Porta |
-|-----|-------|------:|
-| `apps/web` | Frontend passageiro | 3000 |
-| `apps/gateway` | API Gateway (NestJS) | 3001 |
-| `apps/trip-service` | Catálogo/busca de viagens | 3002 |
+| Peça | Uso |
+|------|-----|
+| OpenTelemetry | traces, metrics, logs OTLP |
+| Logs JSON | `service`, `level`, `timestamp`, `traceId` |
+| RED | `http_requests_total`, `http_request_errors_total`, `http_request_duration_seconds` |
+| `/metrics` | scrape Prometheus local por serviço |
+| Grafana | http://localhost:3005 |
 
-## Comandos
+Sem alertas / SLO neste momento.
+
+## Portas
+
+| App | Porta |
+|-----|------:|
+| web | 3000 |
+| gateway | 3001 |
+| trip | 3002 |
+| booking | 3003 |
+| payment | 3004 |
+| Grafana LGTM | 3005 |
 
 ```sh
-pnpm docker:up      # Postgres, RabbitMQ, Redis
-pnpm dev            # web + gateway + trip-service
+pnpm docker:up && pnpm db:setup && pnpm dev
 ```
-
-## Escopo atual
-
-Fluxos:
-1. Buscar viagens (`GET /trips/search`)
-2. Ver assentos (`GET /trips/{tripId}/seats`) — status `AVAILABLE | HELD | SOLD`
-
-Seed local: 4 viagens, 40 assentos cada (layout 2+2).
-
-Ainda não: hold/pagamento, consumers RabbitMQ/Redis.
