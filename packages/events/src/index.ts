@@ -1,12 +1,12 @@
-export const EXCHANGE = 'bus.events';
+export const EXCHANGE = "bus.events";
 
 export const RoutingKeys = {
-  SeatReserved: 'seat.reserved',
-  SeatConfirmed: 'seat.confirmed',
-  SeatReleased: 'seat.released',
-  PaymentRequested: 'payment.requested',
-  PaymentApproved: 'payment.approved',
-  PaymentFailed: 'payment.failed',
+  SeatReserved: "seat.reserved",
+  SeatConfirmed: "seat.confirmed",
+  SeatReleased: "seat.released",
+  PaymentRequested: "payment.requested",
+  PaymentApproved: "payment.approved",
+  PaymentFailed: "payment.failed",
 } as const;
 
 export type SeatReservedEvent = {
@@ -38,7 +38,7 @@ export type SeatReleasedEvent = {
   reservationId: string;
   tripId: string;
   seatId: string;
-  reason: 'EXPIRED' | 'CANCELLED';
+  reason: "EXPIRED" | "CANCELLED";
 };
 
 export type PaymentRequestedEvent = {

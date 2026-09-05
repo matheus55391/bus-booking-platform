@@ -3,18 +3,18 @@ import {
   ExecutionContext,
   Injectable,
   NestInterceptor,
-} from '@nestjs/common';
-import type { Request, Response } from 'express';
-import { Observable, tap } from 'rxjs';
-import { getServiceName, createLogger } from './telemetry';
-import { recordHttpRed } from './metrics';
+} from "@nestjs/common";
+import type { Request, Response } from "express";
+import { Observable, tap } from "rxjs";
+import { getServiceName, createLogger } from "./telemetry";
+import { recordHttpRed } from "./metrics";
 
-const log = createLogger('http');
+const log = createLogger("http");
 
 @Injectable()
 export class ObservabilityInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    if (context.getType() !== 'http') {
+    if (context.getType() !== "http") {
       return next.handle();
     }
 
@@ -25,7 +25,7 @@ export class ObservabilityInterceptor implements NestInterceptor {
     const service = getServiceName();
     const method = req.method;
     const route = req.route?.path
-      ? `${req.baseUrl || ''}${req.route.path}`
+      ? `${req.baseUrl || ""}${req.route.path}`
       : req.path;
 
     return next.handle().pipe(
@@ -50,7 +50,7 @@ export class ObservabilityInterceptor implements NestInterceptor {
   ) {
     const durationSeconds = Number(process.hrtime.bigint() - started) / 1e9;
     recordHttpRed({ service, method, route, statusCode, durationSeconds });
-    log.info('request completed', {
+    log.info("request completed", {
       method,
       route,
       statusCode,

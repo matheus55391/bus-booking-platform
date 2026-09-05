@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { statusLabel } from '@/lib/format';
-import type { Seat, SeatStatus } from '@/types';
-import styles from '@/app/page.module.css';
+import { statusLabel } from "@/lib/format";
+import type { Seat, SeatStatus } from "@/types";
+import styles from "@/app/page.module.css";
 
 type Props = {
   seats: Seat[];
@@ -14,15 +14,15 @@ type Props = {
 
 function seatClass(status: SeatStatus, selected: boolean) {
   const statusClass =
-    styles[status.toLowerCase() as 'available' | 'held' | 'sold'];
+    styles[status.toLowerCase() as "available" | "held" | "sold"];
   return [
     styles.seat,
     statusClass,
-    selected ? styles.seatSelected : '',
-    status === 'AVAILABLE' ? styles.seatButton : '',
+    selected ? styles.seatSelected : "",
+    status === "AVAILABLE" ? styles.seatButton : "",
   ]
     .filter(Boolean)
-    .join(' ');
+    .join(" ");
 }
 
 export function SeatMap({
@@ -50,7 +50,7 @@ export function SeatMap({
     const className = seatClass(seat.status, selected);
     const busy = reservingSeatId === seat.id;
 
-    if (seat.status !== 'AVAILABLE') {
+    if (seat.status !== "AVAILABLE") {
       return (
         <span
           key={seat.id}
@@ -68,10 +68,12 @@ export function SeatMap({
         type="button"
         className={className}
         title={`Reservar ${seat.label}`}
-        disabled={disabled || Boolean(reservingSeatId) || Boolean(selectedSeatId)}
+        disabled={
+          disabled || Boolean(reservingSeatId) || Boolean(selectedSeatId)
+        }
         onClick={() => onSelect(seat)}
       >
-        {busy ? '…' : seat.label}
+        {busy ? "…" : seat.label}
       </button>
     );
   }

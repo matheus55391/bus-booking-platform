@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createReservation } from '@/api';
-import { newIdempotencyKey } from '@/lib/format';
-import type { Reservation, Seat } from '@/types';
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createReservation } from "@/api";
+import { newIdempotencyKey } from "@/lib/format";
+import type { Reservation, Seat } from "@/types";
 
 type Options = {
   tripId: string;
@@ -25,11 +25,11 @@ export function useCreateReservation({ tripId, onSuccess, onError }: Options) {
       return { reservation, idempotencyKey };
     },
     onSuccess: async (data) => {
-      await queryClient.invalidateQueries({ queryKey: ['trip-seats', tripId] });
+      await queryClient.invalidateQueries({ queryKey: ["trip-seats", tripId] });
       onSuccess?.(data.reservation, data.idempotencyKey);
     },
     onError: (error: Error) => {
-      void queryClient.invalidateQueries({ queryKey: ['trip-seats', tripId] });
+      void queryClient.invalidateQueries({ queryKey: ["trip-seats", tripId] });
       onError?.(error);
     },
   });

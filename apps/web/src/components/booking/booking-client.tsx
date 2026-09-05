@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useCallback, useState } from 'react';
+import Link from "next/link";
+import { useCallback, useState } from "react";
 import {
   useCreatePayment,
   useCreateReservation,
   useReservationCountdown,
   useTripSeats,
-} from '@/hooks';
-import type { Payment, Reservation, SeatsResponse } from '@/types';
-import styles from '@/app/page.module.css';
-import { CheckoutPanel } from './checkout-panel';
-import { SeatMap } from './seat-map';
+} from "@/hooks";
+import type { Payment, Reservation, SeatsResponse } from "@/types";
+import styles from "@/app/page.module.css";
+import { CheckoutPanel } from "./checkout-panel";
+import { SeatMap } from "./seat-map";
 
 type Props = {
   tripId: string;
@@ -76,11 +76,11 @@ export function BookingClient({ tripId, initialSeats }: Props) {
       <section className={styles.seatsSection}>
         <h2>Assentos</h2>
         <p className={styles.hint}>
-          Clique em um assento livre: ele fica reservado para você por 10
-          minutos.
+          Clique em um assento livre: ele fica reservado para você por 1
+          minuto.
         </p>
         <p className={styles.seatsMeta}>
-          {seatsData.summary.available} livres · {seatsData.summary.held}{' '}
+          {seatsData.summary.available} livres · {seatsData.summary.held}{" "}
           reservados · {seatsData.summary.sold} ocupados
         </p>
         <div className={styles.legend}>
@@ -90,9 +90,7 @@ export function BookingClient({ tripId, initialSeats }: Props) {
           <span className={`${styles.legendItem} ${styles.held}`}>
             Reservado
           </span>
-          <span className={`${styles.legendItem} ${styles.sold}`}>
-            Ocupado
-          </span>
+          <span className={`${styles.legendItem} ${styles.sold}`}>Ocupado</span>
           <span className={`${styles.legendItem} ${styles.selectedLegend}`}>
             Seu assento
           </span>

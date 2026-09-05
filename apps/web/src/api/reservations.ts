@@ -1,5 +1,5 @@
-import type { Reservation } from '@/types';
-import { apiUrl, parseApiError } from './client';
+import type { Reservation } from "@/types";
+import { apiUrl, parseApiError } from "./client";
 
 export async function createReservation(input: {
   tripId: string;
@@ -7,16 +7,16 @@ export async function createReservation(input: {
   userId?: string;
   idempotencyKey: string;
 }): Promise<Reservation> {
-  const response = await fetch(apiUrl('/reservations'), {
-    method: 'POST',
+  const response = await fetch(apiUrl("/reservations"), {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'Idempotency-Key': input.idempotencyKey,
+      "Content-Type": "application/json",
+      "Idempotency-Key": input.idempotencyKey,
     },
     body: JSON.stringify({
       tripId: input.tripId,
       seatId: input.seatId,
-      userId: input.userId ?? 'demo-passenger',
+      userId: input.userId ?? "demo-passenger",
     }),
   });
   if (!response.ok) {
@@ -27,7 +27,7 @@ export async function createReservation(input: {
 
 export async function getReservation(id: string): Promise<Reservation> {
   const response = await fetch(apiUrl(`/reservations/${id}`), {
-    cache: 'no-store',
+    cache: "no-store",
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));

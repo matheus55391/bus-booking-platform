@@ -1,8 +1,8 @@
-import { searchTrips } from '@/api';
-import { SearchForm } from '@/components/search/search-form';
-import { TripList } from '@/components/search/trip-list';
-import { searchTripsSchema } from '@/schemas';
-import styles from './page.module.css';
+import { searchTrips } from "@/api";
+import { SearchForm } from "@/components/search/search-form";
+import { TripList } from "@/components/search/trip-list";
+import { searchTripsSchema } from "@/schemas";
+import styles from "./page.module.css";
 
 type SearchParams = Promise<{
   origin?: string;
@@ -11,9 +11,9 @@ type SearchParams = Promise<{
 }>;
 
 const defaults = {
-  origin: 'Aracaju',
-  destination: 'Salvador',
-  date: '2026-09-10',
+  origin: "Aracaju",
+  destination: "Salvador",
+  date: "2026-09-10",
 };
 
 export default async function HomePage({
@@ -37,7 +37,7 @@ export default async function HomePage({
     try {
       result = await searchTrips(parsed.data);
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Falha na busca';
+      error = err instanceof Error ? err.message : "Falha na busca";
     }
   }
 

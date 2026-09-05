@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { searchTripsSchema, type SearchTripsInput } from '@/schemas';
-import styles from '@/app/page.module.css';
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { searchTripsSchema, type SearchTripsInput } from "@/schemas";
+import styles from "@/app/page.module.css";
 
 type Props = {
   defaults: SearchTripsInput;
@@ -30,14 +30,14 @@ export function SearchForm({ defaults }: Props) {
     <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
       <label className={styles.field}>
         <span>Origem</span>
-        <input {...register('origin')} />
+        <input {...register("origin")} />
         {errors.origin ? (
           <span className={styles.fieldError}>{errors.origin.message}</span>
         ) : null}
       </label>
       <label className={styles.field}>
         <span>Destino</span>
-        <input {...register('destination')} />
+        <input {...register("destination")} />
         {errors.destination ? (
           <span className={styles.fieldError}>
             {errors.destination.message}
@@ -46,13 +46,13 @@ export function SearchForm({ defaults }: Props) {
       </label>
       <label className={styles.field}>
         <span>Data</span>
-        <input type="date" {...register('date')} />
+        <input type="date" {...register("date")} />
         {errors.date ? (
           <span className={styles.fieldError}>{errors.date.message}</span>
         ) : null}
       </label>
       <button className={styles.submit} type="submit" disabled={isSubmitting}>
-        {isSubmitting ? 'Buscando…' : 'Buscar'}
+        {isSubmitting ? "Buscando…" : "Buscar"}
       </button>
     </form>
   );

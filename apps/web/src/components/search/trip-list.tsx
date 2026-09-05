@@ -1,7 +1,7 @@
-import Link from 'next/link';
-import { formatMoney, formatTime } from '@/lib/format';
-import type { SearchResponse } from '@/types';
-import styles from '@/app/page.module.css';
+import Link from "next/link";
+import { formatMoney, formatTime } from "@/lib/format";
+import type { SearchResponse } from "@/types";
+import styles from "@/app/page.module.css";
 
 type Props = {
   result: SearchResponse;
@@ -11,7 +11,7 @@ export function TripList({ result }: Props) {
   return (
     <section className={styles.results}>
       <h2>
-        {result.count} viagem(ns) · {result.query.origin} →{' '}
+        {result.count} viagem(ns) · {result.query.origin} →{" "}
         {result.query.destination}
       </h2>
       {result.trips.length === 0 ? (
@@ -28,7 +28,7 @@ export function TripList({ result }: Props) {
                 <div>
                   <strong>{trip.companyName}</strong>
                   <p>
-                    {formatTime(trip.departureAt)} →{' '}
+                    {formatTime(trip.departureAt)} →{" "}
                     {formatTime(trip.arrivalAt)}
                   </p>
                   <p>{trip.availableSeats} assentos livres</p>

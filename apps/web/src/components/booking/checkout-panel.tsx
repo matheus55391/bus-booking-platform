@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { formatDateTime, formatMoney } from '@/lib/format';
-import type { Payment, Reservation } from '@/types';
-import styles from '@/app/page.module.css';
+import { formatDateTime, formatMoney } from "@/lib/format";
+import type { Payment, Reservation } from "@/types";
+import styles from "@/app/page.module.css";
 
 type Props = {
   reservation: Reservation;
@@ -42,7 +42,7 @@ export function CheckoutPanel({
         <div>
           <dt>Expira em</dt>
           <dd>
-            {reservation.status === 'RESERVED'
+            {reservation.status === "RESERVED"
               ? remainingLabel
               : formatDateTime(reservation.expiresAt)}
           </dd>
@@ -59,14 +59,14 @@ export function CheckoutPanel({
         ) : null}
       </dl>
 
-      {reservation.status === 'RESERVED' && remainingMs > 0 ? (
+      {reservation.status === "RESERVED" && remainingMs > 0 ? (
         <button
           type="button"
           className={styles.payButton}
           disabled={paying}
           onClick={onPay}
         >
-          {paying ? 'Processando pagamento…' : 'Pagar agora'}
+          {paying ? "Processando pagamento…" : "Pagar agora"}
         </button>
       ) : null}
 
@@ -74,20 +74,18 @@ export function CheckoutPanel({
         <p className={styles.success}>
           Pagamento <strong>{payment.status}</strong>
           {payment.transactionId ? ` · txn ${payment.transactionId}` : null}
-          {payment.idempotentReplay ? ' · replay idempotente' : null}
+          {payment.idempotentReplay ? " · replay idempotente" : null}
         </p>
       ) : null}
 
-      {reservation.status === 'CONFIRMED' ? (
+      {reservation.status === "CONFIRMED" ? (
         <p className={styles.success}>
           Reserva confirmada. Assento {reservation.seatLabel} ocupado.
         </p>
       ) : null}
 
-      {reservation.status === 'EXPIRED' ? (
-        <p className={styles.error}>
-          Reserva expirou. Escolha outro assento.
-        </p>
+      {reservation.status === "EXPIRED" ? (
+        <p className={styles.error}>Reserva expirou. Escolha outro assento.</p>
       ) : null}
     </section>
   );

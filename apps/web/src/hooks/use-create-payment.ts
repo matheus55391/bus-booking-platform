@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createPayment, getReservation } from '@/api';
-import { newIdempotencyKey } from '@/lib/format';
-import type { Payment, Reservation } from '@/types';
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createPayment, getReservation } from "@/api";
+import { newIdempotencyKey } from "@/lib/format";
+import type { Payment, Reservation } from "@/types";
 
 type Options = {
   tripId: string;
@@ -33,13 +33,13 @@ export function useCreatePayment({
         await new Promise((r) => setTimeout(r, 400));
         const current = await getReservation(reservation.id);
         onReservationUpdate?.(current);
-        if (current.status === 'CONFIRMED') break;
+        if (current.status === "CONFIRMED") break;
       }
 
       return payment;
     },
     onSuccess: async (payment) => {
-      await queryClient.invalidateQueries({ queryKey: ['trip-seats', tripId] });
+      await queryClient.invalidateQueries({ queryKey: ["trip-seats", tripId] });
       onSuccess?.(payment);
     },
     onError: (error: Error) => onError?.(error),
