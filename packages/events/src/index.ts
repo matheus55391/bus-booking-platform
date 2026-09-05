@@ -1,5 +1,8 @@
-export const EXCHANGE = "bus.events";
+/** Fanout de domínio: 1 exchange, N filas (uma por consumidor). */
+export const EXCHANGE = "bus.fanout";
+export const EXCHANGE_TYPE = "fanout" as const;
 
+/** Tipo do evento (vai no payload + routing key da mensagem; fanout ignora a key p/ roteamento). */
 export const RoutingKeys = {
   SeatReserved: "seat.reserved",
   SeatConfirmed: "seat.confirmed",

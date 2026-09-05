@@ -8,24 +8,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Postgres só entra no funil a partir do checkout.
+/// Hold não pago mora no Redis + evento seat.reserved (RabbitMQ).
 enum ReservationStatus {
-  RESERVED
+  PENDING_PAYMENT
   CONFIRMED
   EXPIRED
   CANCELLED
 }
 
 model Reservation {
-  id              String            @id @default(cuid())
-  tripId          String
-  seatId          String
-  userId          String
-  amountCents     Int
-  status          ReservationStatus @default(RESERVED)
-  expiresAt       DateTime
-  idempotencyKey  String            @unique
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id             String            @id @default(cuid())
+  tripId         String
+  seatId         String
+  userId         String
+  amountCents    Int
+  status         ReservationStatus @default(PENDING_PAYMENT)
+  expiresAt      DateTime
+  idempotencyKey String            @unique
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([status, expiresAt])
   @@index([tripId, seatId])

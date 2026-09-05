@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
@@ -11,31 +10,35 @@ import { Prisma, ReservationStatus } from '@bus/booking-prisma';
 import type { CreateReservationInput } from '@repo/common';
 import {
   PaymentApprovedEvent,
+  PaymentFailedEvent,
   RoutingKeys,
   SeatConfirmedEvent,
   SeatReleasedEvent,
   SeatReservedEvent,
 } from '@repo/events';
-import { createCounter } from '@repo/observability';
+import { createLogger } from '@repo/observability';
 import { randomUUID } from 'crypto';
 import { RabbitMqService } from '../messaging/rabbitmq.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { HoldStoreService } from '../redis/hold-store.service';
-import type { LockedSeat, SeatHold, TripPrice } from './reservations.types';
+import {
+  holdsConfirmed,
+  holdsCreated,
+  holdsExpired,
+} from './reservations.metrics';
+import {
+  holdRoute,
+  LockedSeat,
+  SeatHold,
+  TripPrice,
+} from './reservations.types';
 
-const reservationsCreated = createCounter(
-  'booking_reservations_created_total',
-  'Reservations created',
-  ['result'],
-);
-const reservationsConfirmed = createCounter(
-  'booking_reservations_confirmed_total',
-  'Reservations confirmed after payment',
-);
+/** Janela extra no Redis enquanto o pagamento roda. */
+const PAYMENT_HOLD_TTL_SECONDS = 120;
 
 @Injectable()
 export class ReservationsService implements OnModuleInit {
-  private readonly logger = new Logger(ReservationsService.name);
+  private readonly log = createLogger('reservations');
 
   constructor(
     private readonly prisma: PrismaService,
@@ -45,14 +48,24 @@ export class ReservationsService implements OnModuleInit {
 
   async onModuleInit() {
     await this.rabbit.subscribe(
-      'booking.payment-approved',
-      [RoutingKeys.PaymentApproved],
-      async (payload) => {
-        await this.onPaymentApproved(payload as PaymentApprovedEvent);
+      'booking_domain',
+      [RoutingKeys.PaymentApproved, RoutingKeys.PaymentFailed],
+      async (payload, routingKey) => {
+        if (routingKey === RoutingKeys.PaymentApproved) {
+          await this.onPaymentApproved(payload as PaymentApprovedEvent);
+          return;
+        }
+        if (routingKey === RoutingKeys.PaymentFailed) {
+          await this.onPaymentFailed(payload as PaymentFailedEvent);
+        }
       },
     );
   }
 
+  /**
+   * Cria hold no Redis + marca assento HELD + publica seat.reserved.
+   * Não grava Reservation no Postgres.
+   */
   async create(input: CreateReservationInput) {
     const tripId = input.tripId?.trim();
     const seatId = input.seatId?.trim();
@@ -68,7 +81,10 @@ export class ReservationsService implements OnModuleInit {
 
     const existingHold = await this.holds.getByIdempotencyKey(idempotencyKey);
     if (existingHold) {
-      reservationsCreated.inc({ result: 'idempotent' });
+      holdsCreated.inc({
+        result: 'idempotent',
+        ...holdRoute(existingHold),
+      });
       return this.toHoldResponse(existingHold, true);
     }
 
@@ -76,7 +92,11 @@ export class ReservationsService implements OnModuleInit {
       where: { idempotencyKey },
     });
     if (existingPaid) {
-      reservationsCreated.inc({ result: 'idempotent' });
+      holdsCreated.inc({
+        result: 'idempotent',
+        origin: 'unknown',
+        destination: 'unknown',
+      });
       return this.toDbResponse(existingPaid, null, true);
     }
 
@@ -85,11 +105,17 @@ export class ReservationsService implements OnModuleInit {
 
     try {
       const trip = await this.prisma.$queryRaw<TripPrice[]>`
-        SELECT "priceCents" FROM "Trip" WHERE id = ${tripId} LIMIT 1
+        SELECT "priceCents", origin, destination
+        FROM "Trip"
+        WHERE id = ${tripId}
+        LIMIT 1
       `;
       if (trip.length === 0) {
         throw new NotFoundException(`trip ${tripId} not found`);
       }
+
+      const origin = trip[0].origin;
+      const destination = trip[0].destination;
 
       const locked = await this.prisma.$queryRaw<LockedSeat[]>`
         UPDATE "Seat"
@@ -117,6 +143,8 @@ export class ReservationsService implements OnModuleInit {
         idempotencyKey,
         createdAt: new Date().toISOString(),
         expiresAt: expiresAt.toISOString(),
+        origin,
+        destination,
       };
 
       const created = await this.holds.tryCreate(hold);
@@ -153,10 +181,26 @@ export class ReservationsService implements OnModuleInit {
       };
       await this.rabbit.publish(RoutingKeys.SeatReserved, event);
 
-      reservationsCreated.inc({ result: 'created' });
+      holdsCreated.inc({ result: 'created', origin, destination });
+      this.log.info('hold_created', {
+        holdId: created.id,
+        tripId,
+        seatId,
+        seatLabel,
+        userId,
+        origin,
+        destination,
+        amountCents: created.amountCents,
+        expiresAt: created.expiresAt,
+      });
+
       return this.toHoldResponse(created, false);
     } catch (error) {
-      reservationsCreated.inc({ result: 'error' });
+      holdsCreated.inc({
+        result: 'error',
+        origin: 'unknown',
+        destination: 'unknown',
+      });
       throw error;
     }
   }
@@ -164,6 +208,12 @@ export class ReservationsService implements OnModuleInit {
   async findById(id: string) {
     const hold = await this.holds.getById(id);
     if (hold) {
+      const pending = await this.prisma.reservation.findUnique({
+        where: { id },
+      });
+      if (pending?.status === ReservationStatus.PENDING_PAYMENT) {
+        return this.toDbResponse(pending, hold.seatLabel, false);
+      }
       return this.toHoldResponse(hold, false);
     }
 
@@ -181,40 +231,126 @@ export class ReservationsService implements OnModuleInit {
     return this.toDbResponse(reservation, seats[0]?.label ?? null, false);
   }
 
-  async onPaymentApproved(event: PaymentApprovedEvent) {
-    const hold = await this.holds.getById(event.reservationId);
-    if (!hold) {
-      const existing = await this.prisma.reservation.findUnique({
-        where: { id: event.reservationId },
-      });
-      if (existing?.status === ReservationStatus.CONFIRMED) {
-        return;
+  /**
+   * Primeira gravação no Postgres: pagamento foi iniciado.
+   * Hold continua no Redis até CONFIRMED ou FAILED.
+   */
+  async beginPayment(reservationId: string) {
+    const id = reservationId?.trim();
+    if (!id) {
+      throw new BadRequestException('reservationId is required');
+    }
+
+    const existing = await this.prisma.reservation.findUnique({ where: { id } });
+    if (existing?.status === ReservationStatus.CONFIRMED) {
+      return this.toDbResponse(existing, null, true);
+    }
+    if (existing?.status === ReservationStatus.PENDING_PAYMENT) {
+      const hold = await this.holds.getById(id);
+      if (hold) {
+        await this.holds.refresh(hold, PAYMENT_HOLD_TTL_SECONDS);
       }
-      this.logger.warn(
-        `Payment for unknown/expired hold ${event.reservationId}`,
-      );
+      return this.toDbResponse(existing, hold?.seatLabel ?? null, true);
+    }
+
+    const hold = await this.holds.getById(id);
+    if (!hold) {
+      throw new NotFoundException(`hold ${id} not found or expired`);
+    }
+    if (new Date(hold.expiresAt).getTime() < Date.now()) {
+      throw new BadRequestException('reservation already expired');
+    }
+
+    const refreshed = await this.holds.refresh(hold, PAYMENT_HOLD_TTL_SECONDS);
+
+    try {
+      const created = await this.prisma.reservation.create({
+        data: {
+          id: refreshed.id,
+          tripId: refreshed.tripId,
+          seatId: refreshed.seatId,
+          userId: refreshed.userId,
+          amountCents: refreshed.amountCents,
+          status: ReservationStatus.PENDING_PAYMENT,
+          expiresAt: new Date(refreshed.expiresAt),
+          idempotencyKey: refreshed.idempotencyKey,
+        },
+      });
+
+      this.log.info('payment_started', {
+        holdId: created.id,
+        tripId: created.tripId,
+        seatId: created.seatId,
+        ...holdRoute(refreshed),
+        amountCents: created.amountCents,
+      });
+
+      return this.toDbResponse(created, refreshed.seatLabel, false);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const again = await this.prisma.reservation.findUnique({
+          where: { id },
+        });
+        if (again) {
+          return this.toDbResponse(again, refreshed.seatLabel, true);
+        }
+      }
+      throw error;
+    }
+  }
+
+  async onPaymentApproved(event: PaymentApprovedEvent) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id: event.reservationId },
+    });
+
+    if (reservation?.status === ReservationStatus.CONFIRMED) {
       return;
     }
 
+    const hold = await this.holds.getById(event.reservationId);
+
+    if (!reservation && !hold) {
+      this.log.warn('payment_for_unknown_hold', {
+        reservationId: event.reservationId,
+        paymentId: event.paymentId,
+      });
+      return;
+    }
+
+    const seatId = reservation?.seatId ?? hold!.seatId;
+    const tripId = reservation?.tripId ?? hold!.tripId;
+
     try {
       await this.prisma.$transaction(async (tx) => {
-        await tx.reservation.create({
-          data: {
-            id: hold.id,
-            tripId: hold.tripId,
-            seatId: hold.seatId,
-            userId: hold.userId,
-            amountCents: hold.amountCents,
-            status: ReservationStatus.CONFIRMED,
-            expiresAt: new Date(hold.expiresAt),
-            idempotencyKey: hold.idempotencyKey,
-          },
-        });
+        if (reservation) {
+          await tx.reservation.update({
+            where: { id: event.reservationId },
+            data: { status: ReservationStatus.CONFIRMED },
+          });
+        } else if (hold) {
+          await tx.reservation.create({
+            data: {
+              id: hold.id,
+              tripId: hold.tripId,
+              seatId: hold.seatId,
+              userId: hold.userId,
+              amountCents: hold.amountCents,
+              status: ReservationStatus.CONFIRMED,
+              expiresAt: new Date(hold.expiresAt),
+              idempotencyKey: hold.idempotencyKey,
+            },
+          });
+        }
+
         await tx.$executeRaw`
           UPDATE "Seat"
           SET status = 'SOLD', "updatedAt" = NOW()
-          WHERE id = ${hold.seatId}
-            AND status = 'HELD'
+          WHERE id = ${seatId}
+            AND status IN ('HELD', 'SOLD')
         `;
       });
     } catch (error) {
@@ -222,25 +358,62 @@ export class ReservationsService implements OnModuleInit {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        await this.holds.delete(hold);
+        if (hold) await this.holds.delete(hold);
         return;
       }
       throw error;
     }
 
-    await this.holds.delete(hold);
+    if (hold) {
+      await this.holds.delete(hold);
+    }
 
     const confirmed: SeatConfirmedEvent = {
       eventId: randomUUID(),
       type: RoutingKeys.SeatConfirmed,
       occurredAt: new Date().toISOString(),
-      reservationId: hold.id,
-      tripId: hold.tripId,
-      seatId: hold.seatId,
+      reservationId: event.reservationId,
+      tripId,
+      seatId,
     };
     await this.rabbit.publish(RoutingKeys.SeatConfirmed, confirmed);
-    reservationsConfirmed.inc();
-    this.logger.log(`Reservation ${hold.id} CONFIRMED`);
+
+    const route = hold ? holdRoute(hold) : { origin: 'unknown', destination: 'unknown' };
+    holdsConfirmed.inc(route);
+    this.log.info('hold_confirmed', {
+      holdId: event.reservationId,
+      tripId,
+      seatId,
+      seatLabel: hold?.seatLabel,
+      userId: hold?.userId ?? reservation?.userId,
+      ...route,
+      amountCents: hold?.amountCents ?? reservation?.amountCents,
+      paymentId: event.paymentId,
+    });
+  }
+
+  async onPaymentFailed(event: PaymentFailedEvent) {
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id: event.reservationId },
+    });
+
+    if (reservation?.status === ReservationStatus.PENDING_PAYMENT) {
+      await this.prisma.reservation.update({
+        where: { id: event.reservationId },
+        data: { status: ReservationStatus.CANCELLED },
+      });
+    }
+
+    const hold = await this.holds.getById(event.reservationId);
+    if (hold) {
+      await this.releaseHold(hold, 'CANCELLED');
+    }
+
+    this.log.warn('payment_failed_released', {
+      reservationId: event.reservationId,
+      paymentId: event.paymentId,
+      reason: event.reason,
+    });
   }
 
   @Cron(CronExpression.EVERY_10_SECONDS)
@@ -257,18 +430,32 @@ export class ReservationsService implements OnModuleInit {
           continue;
         }
 
+        // Checkout em andamento: não libera pelo TTL do hold inicial
+        const pending = await this.prisma.reservation.findUnique({
+          where: { id },
+        });
+        if (pending?.status === ReservationStatus.PENDING_PAYMENT) {
+          if (new Date(hold.expiresAt).getTime() > Date.now()) {
+            continue;
+          }
+          // Janela de pagamento também expirou
+          await this.prisma.reservation.update({
+            where: { id },
+            data: { status: ReservationStatus.EXPIRED },
+          });
+        }
+
         await this.releaseHold(hold, 'EXPIRED');
         released += 1;
       }
 
       if (released > 0) {
-        this.logger.log(`Expired ${released} hold(s); seats released`);
+        this.log.info('holds_expired_batch', { released });
       }
     } catch (error) {
-      this.logger.error(
-        'Failed to expire holds',
-        error instanceof Error ? error : new Error(String(error)),
-      );
+      this.log.error('Failed to expire holds', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -298,6 +485,18 @@ export class ReservationsService implements OnModuleInit {
       reason,
     };
     await this.rabbit.publish(RoutingKeys.SeatReleased, released);
+
+    const route = holdRoute(hold);
+    holdsExpired.inc({ ...route, reason });
+    this.log.info('hold_released', {
+      holdId: hold.id,
+      tripId: hold.tripId,
+      seatId: hold.seatId,
+      seatLabel: hold.seatLabel,
+      userId: hold.userId,
+      ...route,
+      reason,
+    });
   }
 
   private toHoldResponse(hold: SeatHold, idempotentReplay: boolean) {

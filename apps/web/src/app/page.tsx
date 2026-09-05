@@ -2,7 +2,6 @@ import { searchTrips } from "@/api";
 import { SearchForm } from "@/components/search/search-form";
 import { TripList } from "@/components/search/trip-list";
 import { searchTripsSchema } from "@/schemas";
-import styles from "./page.module.css";
 
 type SearchParams = Promise<{
   origin?: string;
@@ -22,6 +21,7 @@ export default async function HomePage({
   searchParams: SearchParams;
 }) {
   const raw = await searchParams;
+  const hasQuery = Boolean(raw.origin || raw.destination || raw.date);
   const parsed = searchTripsSchema.safeParse({
     origin: raw.origin ?? defaults.origin,
     destination: raw.destination ?? defaults.destination,
@@ -33,7 +33,7 @@ export default async function HomePage({
   let result = null;
   let error: string | null = null;
 
-  if (parsed.success) {
+  if (hasQuery && parsed.success) {
     try {
       result = await searchTrips(parsed.data);
     } catch (err) {
@@ -42,18 +42,28 @@ export default async function HomePage({
   }
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <p className={styles.brand}>Rodoviária</p>
-        <h1 className={styles.title}>Buscar viagens</h1>
-        <p className={styles.subtitle}>
-          SSR para busca/lista · Client para reserva
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
+      <section className="flex flex-col gap-6">
+        <div className="max-w-2xl">
+          <h1 className="font-[family-name:var(--font-heading)] text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
+            Rodoviária
+          </h1>
+          <p className="mt-3 max-w-xl text-base text-muted-foreground sm:text-lg">
+            Compare horários e preços e reserve seu assento em poucos minutos.
+          </p>
+        </div>
+
+        <SearchForm defaults={formDefaults} />
+      </section>
+
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          {error}
         </p>
-      </header>
-
-      <SearchForm defaults={formDefaults} />
-
-      {error ? <p className={styles.error}>{error}</p> : null}
+      ) : null}
 
       {result ? <TripList result={result} /> : null}
     </div>

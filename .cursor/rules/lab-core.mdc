@@ -7,16 +7,24 @@ alwaysApply: true
 
 ```text
 Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Payment
-                                    ↕ eventos domínio (bus.events)
+                                    │
+                         Fanout bus.fanout (1 fila / consumidor)
+                      /            |            \
+                   Trip         Booking      Notification → Mailhog
 Grafana LGTM (:3005) ← OTLP
 
 apps/api/api-gateway/src/app/
   controllers/ services/ guards/ pipes/
 
 packages/common  ← contratos + topics/queues
-packages/events  ← seat.* / payment.*
+packages/events  ← seat.* / payment.* (Fanout)
 ```
 
 Booking dono da Reservation. Payment dono do Payment. Trip projeta assentos.
+Notification consome eventos e envia e-mail (Mailhog em local).
+
+Hold não pago: Redis + evento `seat.reserved` (não grava Reservation no PG).
+Postgres: Reservation entra em `PENDING_PAYMENT` no início do pagamento;
+vira `CONFIRMED` / `CANCELLED` / `EXPIRED` depois.
 
 Idempotência obrigatória em reserva e pagamento.

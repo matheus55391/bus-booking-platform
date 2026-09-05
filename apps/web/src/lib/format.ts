@@ -13,6 +13,17 @@ export function formatTime(iso: string) {
   });
 }
 
+export function formatDuration(departureIso: string, arrivalIso: string) {
+  const ms =
+    new Date(arrivalIso).getTime() - new Date(departureIso).getTime();
+  const totalMinutes = Math.max(0, Math.round(ms / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 export function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("pt-BR");
 }

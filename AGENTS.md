@@ -4,8 +4,10 @@
 
 ```text
 Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Payment
-                      │                     ↕ domain events (seat.*, payment.*)
-                      │                   PostgreSQL
+                                           │
+                                Fanout bus.fanout
+                             /         |          \
+                        Trip      Booking     Notification → Mailhog
 Apps → OTLP :4318 → Grafana LGTM
 
 apps/
@@ -15,6 +17,7 @@ apps/
     trip-service/  # trip_queue + HTTP health
     booking-service/
     payment-service/
+    notification-service/  # e-mail via Mailhog
 packages/
   common/   # contratos + topics/queues (@repo/common)
   events/   # payloads de domínio (@repo/events)
@@ -26,10 +29,12 @@ packages/
 |---------|------|
 | Web → Gateway | HTTP |
 | Gateway → serviços | RabbitMQ RPC (`ClientProxy.send` / `@MessagePattern`) |
-| Payment → Booking (validar hold) | RabbitMQ RPC |
-| Booking/Payment → Trip (projeção) | eventos tópico `bus.events` |
+| Payment → Booking (begin payment) | RabbitMQ RPC |
+| Booking/Payment → Trip / Notification / Booking | Fanout `bus.fanout` + 1 fila por consumidor |
+| Notification → Mailhog | SMTP `:1025` |
 
-Filas RPC: `trip_queue`, `booking_queue`, `payment_queue`.
+Filas RPC: `trip_queue`, `booking_queue`, `payment_queue`.  
+Filas domínio (fanout): `trip_domain`, `booking_domain`, `notification_queue`.
 
 ## Observabilidade (mínimo)
 
@@ -40,6 +45,7 @@ Filas RPC: `trip_queue`, `booking_queue`, `payment_queue`.
 | RED | `http_requests_total`, `http_request_errors_total`, `http_request_duration_seconds` |
 | `/metrics` | scrape Prometheus local por serviço |
 | Grafana | http://localhost:3005 |
+| Mailhog | http://localhost:8025 |
 
 ## Portas
 
@@ -51,6 +57,9 @@ Filas RPC: `trip_queue`, `booking_queue`, `payment_queue`.
 | booking | 3003 | `apps/api/booking-service` |
 | payment | 3004 | `apps/api/payment-service` |
 | Grafana LGTM | 3005 | — |
+| notification | 3006 | `apps/api/notification-service` |
+| Mailhog UI | 8025 | — |
+| Mailhog SMTP | 1025 | — |
 
 ```sh
 pnpm docker:up && pnpm db:setup && pnpm dev

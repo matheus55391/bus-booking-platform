@@ -1,11 +1,19 @@
 export type ReservationStatus =
-  "RESERVED" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
+  | "RESERVED" // hold Redis (ainda não em Postgres)
+  | "PENDING_PAYMENT" // pagamento iniciado (Postgres)
+  | "CONFIRMED"
+  | "EXPIRED"
+  | "CANCELLED";
 
 export type CreateReservationInput = {
   tripId: string;
   seatId: string;
   userId?: string;
   idempotencyKey: string;
+};
+
+export type BeginPaymentInput = {
+  reservationId: string;
 };
 
 /** Resposta HTTP de reserva (Booking → Gateway → Web). */

@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Inject,
   Injectable,
-  Logger,
   NotFoundException,
   RequestTimeoutException,
 } from '@nestjs/common';
@@ -19,7 +18,7 @@ import {
   PaymentFailedEvent,
   RoutingKeys,
 } from '@repo/events';
-import { createCounter } from '@repo/observability';
+import { createCounter, createLogger } from '@repo/observability';
 import { randomUUID } from 'crypto';
 import { firstValueFrom, TimeoutError, timeout } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,13 +26,13 @@ import { RabbitMqService } from '../messaging/rabbitmq.service';
 
 const paymentsTotal = createCounter(
   'payment_processed_total',
-  'Payments processed',
+  'Pagamentos processados (funil: checkout)',
   ['result'],
 );
 
 @Injectable()
 export class PaymentsService {
-  private readonly logger = new Logger(PaymentsService.name);
+  private readonly log = createLogger('payments');
 
   constructor(
     private readonly prisma: PrismaService,
@@ -64,13 +63,13 @@ export class PaymentsService {
       return this.toResponse(existing, true);
     }
 
-    // Valida reserva ainda RESERVED no booking-service (RPC RMQ)
+    // 1) Promoove hold Redis → Reservation PENDING_PAYMENT no Postgres
     let reservation: Reservation;
     try {
       reservation = await firstValueFrom(
         this.bookingClient
-          .send<Reservation>(BookingTopics.GetReservation, {
-            id: reservationId,
+          .send<Reservation>(BookingTopics.BeginPayment, {
+            reservationId,
           })
           .pipe(timeout(10_000)),
       );
@@ -81,13 +80,26 @@ export class PaymentsService {
       throw new NotFoundException(`reservation ${reservationId} not found`);
     }
 
-    if (reservation.status !== 'RESERVED') {
+    if (
+      reservation.status !== 'PENDING_PAYMENT' &&
+      reservation.status !== 'CONFIRMED'
+    ) {
       throw new BadRequestException(
-        `reservation is ${reservation.status}, expected RESERVED`,
+        `reservation is ${reservation.status}, expected PENDING_PAYMENT`,
       );
     }
     if (new Date(reservation.expiresAt).getTime() < Date.now()) {
       throw new BadRequestException('reservation already expired');
+    }
+
+    if (reservation.status === 'CONFIRMED') {
+      const existingForReservation = await this.prisma.payment.findFirst({
+        where: { reservationId, status: PaymentStatus.APPROVED },
+      });
+      if (existingForReservation) {
+        paymentsTotal.inc({ result: 'idempotent' });
+        return this.toResponse(existingForReservation, true);
+      }
     }
 
     let payment;
@@ -141,7 +153,12 @@ export class PaymentsService {
       };
       await this.rabbit.publish(RoutingKeys.PaymentApproved, event);
       paymentsTotal.inc({ result: 'approved' });
-      this.logger.log(`Payment ${payment.id} APPROVED txn=${transactionId}`);
+      this.log.info('payment_approved', {
+        paymentId: payment.id,
+        reservationId,
+        amountCents: payment.amountCents,
+        transactionId,
+      });
     } else {
       payment = await this.prisma.payment.update({
         where: { id: payment.id },
@@ -160,6 +177,11 @@ export class PaymentsService {
       };
       await this.rabbit.publish(RoutingKeys.PaymentFailed, event);
       paymentsTotal.inc({ result: 'failed' });
+      this.log.warn('payment_failed', {
+        paymentId: payment.id,
+        reservationId,
+        reason: 'gateway_declined',
+      });
     }
 
     return this.toResponse(payment, false);

@@ -26,7 +26,7 @@ export class SeatEventsConsumer implements OnModuleInit {
 
   async onModuleInit() {
     await this.rabbit.subscribe(
-      'trip.seat-projection',
+      'trip_domain',
       [
         RoutingKeys.SeatReserved,
         RoutingKeys.SeatConfirmed,

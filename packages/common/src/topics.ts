@@ -7,6 +7,7 @@ export const TripTopics = {
 export const BookingTopics = {
   CreateReservation: "booking.create-reservation",
   GetReservation: "booking.get-reservation",
+  BeginPayment: "booking.begin-payment",
 } as const;
 
 export const PaymentTopics = {

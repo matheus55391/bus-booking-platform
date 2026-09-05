@@ -2,7 +2,7 @@
 
 import { formatDateTime, formatMoney } from "@/lib/format";
 import type { Payment, Reservation } from "@/types";
-import styles from "@/app/page.module.css";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   reservation: Reservation;
@@ -24,54 +24,83 @@ export function CheckoutPanel({
   onPay,
 }: Props) {
   return (
-    <section className={styles.checkout}>
-      <h2>Assento selecionado</h2>
-      <dl className={styles.checkoutGrid}>
+    <section className="flex flex-col gap-4 rounded-2xl border border-primary/25 bg-secondary/40 p-5">
+      <h2 className="font-[family-name:var(--font-heading)] text-xl font-bold">
+        Assento selecionado
+      </h2>
+
+      <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <dt>Assento</dt>
-          <dd>{reservation.seatLabel}</dd>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+            Assento
+          </dt>
+          <dd className="mt-1 font-semibold">{reservation.seatLabel}</dd>
         </div>
         <div>
-          <dt>Status da reserva</dt>
-          <dd>{reservation.status}</dd>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+            Status da reserva
+          </dt>
+          <dd className="mt-1 font-semibold">{reservation.status}</dd>
         </div>
         <div>
-          <dt>Valor</dt>
-          <dd>{formatMoney(reservation.amountCents)}</dd>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+            Valor
+          </dt>
+          <dd className="mt-1 font-semibold">
+            {formatMoney(reservation.amountCents)}
+          </dd>
         </div>
         <div>
-          <dt>Expira em</dt>
-          <dd>
-            {reservation.status === "RESERVED"
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+            Expira em
+          </dt>
+          <dd className="mt-1 font-semibold">
+            {reservation.status === "RESERVED" ||
+            reservation.status === "PENDING_PAYMENT"
               ? remainingLabel
               : formatDateTime(reservation.expiresAt)}
           </dd>
         </div>
         <div>
-          <dt>Reservation ID</dt>
-          <dd className={styles.mono}>{reservation.id}</dd>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+            Reservation ID
+          </dt>
+          <dd className="mt-1 break-all font-mono text-xs font-medium">
+            {reservation.id}
+          </dd>
         </div>
         {reserveKey ? (
           <div>
-            <dt>Idempotency-Key</dt>
-            <dd className={styles.mono}>{reserveKey}</dd>
+            <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+              Idempotency-Key
+            </dt>
+            <dd className="mt-1 break-all font-mono text-xs font-medium">
+              {reserveKey}
+            </dd>
           </div>
         ) : null}
       </dl>
 
       {reservation.status === "RESERVED" && remainingMs > 0 ? (
-        <button
+        <Button
           type="button"
-          className={styles.payButton}
+          size="lg"
+          className="rounded-full font-bold"
           disabled={paying}
           onClick={onPay}
         >
           {paying ? "Processando pagamento…" : "Pagar agora"}
-        </button>
+        </Button>
+      ) : null}
+
+      {reservation.status === "PENDING_PAYMENT" ? (
+        <p className="rounded-xl bg-accent/40 px-4 py-3 text-sm text-foreground">
+          Pagamento em andamento…
+        </p>
       ) : null}
 
       {payment ? (
-        <p className={styles.success}>
+        <p className="rounded-xl bg-primary/15 px-4 py-3 text-sm text-foreground">
           Pagamento <strong>{payment.status}</strong>
           {payment.transactionId ? ` · txn ${payment.transactionId}` : null}
           {payment.idempotentReplay ? " · replay idempotente" : null}
@@ -79,13 +108,18 @@ export function CheckoutPanel({
       ) : null}
 
       {reservation.status === "CONFIRMED" ? (
-        <p className={styles.success}>
+        <p className="rounded-xl bg-primary/15 px-4 py-3 text-sm text-foreground">
           Reserva confirmada. Assento {reservation.seatLabel} ocupado.
         </p>
       ) : null}
 
-      {reservation.status === "EXPIRED" ? (
-        <p className={styles.error}>Reserva expirou. Escolha outro assento.</p>
+      {reservation.status === "EXPIRED" ||
+      reservation.status === "CANCELLED" ? (
+        <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {reservation.status === "CANCELLED"
+            ? "Pagamento falhou. Escolha outro assento."
+            : "Reserva expirou. Escolha outro assento."}
+        </p>
       ) : null}
     </section>
   );

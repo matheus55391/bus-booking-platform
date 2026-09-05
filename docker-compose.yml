@@ -49,6 +49,15 @@ services:
       timeout: 3s
       retries: 10
 
+  # SMTP local para o notification-service (UI em :8025)
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: bus-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
+
   # Observabilidade mínima (all-in-one):
   # - Grafana UI
   # - Prometheus (métricas)

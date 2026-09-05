@@ -1,20 +1,23 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Outfit, Source_Sans_3 } from "next/font/google";
 import { QueryProvider } from "@/context";
+import { SiteHeader } from "@/components/layout/site-header";
+import { cn } from "@/lib/utils";
 import "./globals.css";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
+const heading = Outfit({
+  subsets: ["latin"],
+  variable: "--font-heading",
 });
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
+
+const sans = Source_Sans_3({
+  subsets: ["latin"],
+  variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
-  title: "Rodoviária — Buscar viagens",
-  description: "MVP de estudo — busca de passagens rodoviárias",
+  title: "Rodoviária — passagens de ônibus",
+  description: "Busque e reserve passagens rodoviárias",
 };
 
 export default function RootLayout({
@@ -23,9 +26,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <QueryProvider>{children}</QueryProvider>
+    <html lang="pt-BR" className={cn(heading.variable, sans.variable)}>
+      <body className="font-sans">
+        <QueryProvider>
+          <SiteHeader />
+          <main>{children}</main>
+        </QueryProvider>
       </body>
     </html>
   );

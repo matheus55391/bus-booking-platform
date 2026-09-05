@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
-import { EXCHANGE } from '@repo/events';
+import { EXCHANGE, EXCHANGE_TYPE } from '@repo/events';
 import {
   createLogger,
   getServiceName,
@@ -28,6 +28,10 @@ function toTraceCarrier(
   return { ...headers };
 }
 
+/**
+ * Domínio via Fanout: publish(routingKey) → todos os consumidores com fila própria.
+ * `interestKeys` filtra no consumer (fanout entrega tudo).
+ */
 @Injectable()
 export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
   private readonly log = createLogger('rabbitmq');
@@ -44,8 +48,13 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
 
     this.connection = await amqp.connect(url);
     this.channel = await this.connection.createChannel();
-    await this.channel.assertExchange(EXCHANGE, 'topic', { durable: true });
-    this.log.info('connected to RabbitMQ', { exchange: EXCHANGE });
+    await this.channel.assertExchange(EXCHANGE, EXCHANGE_TYPE, {
+      durable: true,
+    });
+    this.log.info('connected to RabbitMQ', {
+      exchange: EXCHANGE,
+      type: EXCHANGE_TYPE,
+    });
   }
 
   async onModuleDestroy() {
@@ -70,11 +79,13 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
       () => {
         const traceHeaders = injectTraceCarrier();
         const body = Buffer.from(JSON.stringify(payload));
+        // Fanout ignora a routing key no broker; mantemos na mensagem p/ filtro do consumer.
         channel.publish(EXCHANGE, routingKey, body, {
           contentType: 'application/json',
           messageId: randomUUID(),
           persistent: true,
           headers: traceHeaders,
+          type: routingKey,
         });
         recordMessagingPublished(getServiceName(), routingKey);
         this.log.info('published message', { routingKey });
@@ -84,7 +95,7 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
 
   async subscribe(
     queue: string,
-    routingKeys: string[],
+    interestKeys: string[],
     handler: MessageHandler,
   ) {
     if (!this.channel) {
@@ -92,22 +103,26 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
     }
 
     const channel = this.channel;
+    const interest = new Set(interestKeys);
 
     await channel.assertQueue(queue, { durable: true });
-    for (const key of routingKeys) {
-      await channel.bindQueue(queue, EXCHANGE, key);
-    }
+    // Fanout: um bind por fila (routing key do bind é ignorada).
+    await channel.bindQueue(queue, EXCHANGE, '');
 
     await channel.consume(queue, (msg) => {
-      void this.handleConsumedMessage(msg, queue, handler);
+      void this.handleConsumedMessage(msg, queue, interest, handler);
     });
 
-    this.log.info('subscribed', { queue, routingKeys: routingKeys.join(',') });
+    this.log.info('subscribed (fanout)', {
+      queue,
+      interest: interestKeys.join(','),
+    });
   }
 
   private async handleConsumedMessage(
     msg: amqp.ConsumeMessage | null,
     queue: string,
+    interest: Set<string>,
     handler: MessageHandler,
   ) {
     if (!msg || !this.channel) {
@@ -116,7 +131,14 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
 
     const channel = this.channel;
     const headers = toTraceCarrier(msg.properties.headers);
-    const routingKey = msg.fields.routingKey;
+    const routingKey =
+      msg.fields.routingKey ||
+      (typeof msg.properties.type === 'string' ? msg.properties.type : '');
+
+    if (interest.size > 0 && routingKey && !interest.has(routingKey)) {
+      channel.ack(msg);
+      return;
+    }
 
     try {
       await withExtractedContext(headers, async () => {

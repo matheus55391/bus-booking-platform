@@ -2,7 +2,7 @@
 
 import { statusLabel } from "@/lib/format";
 import type { Seat, SeatStatus } from "@/types";
-import styles from "@/app/page.module.css";
+import { cn } from "@/lib/utils";
 
 type Props = {
   seats: Seat[];
@@ -12,17 +12,18 @@ type Props = {
   onSelect: (seat: Seat) => void;
 };
 
-function seatClass(status: SeatStatus, selected: boolean) {
-  const statusClass =
-    styles[status.toLowerCase() as "available" | "held" | "sold"];
-  return [
-    styles.seat,
-    statusClass,
-    selected ? styles.seatSelected : "",
-    status === "AVAILABLE" ? styles.seatButton : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+function seatTone(status: SeatStatus, selected: boolean) {
+  if (selected) {
+    return "bg-foreground text-background border-foreground ring-2 ring-primary ring-offset-2";
+  }
+  switch (status) {
+    case "AVAILABLE":
+      return "bg-primary/25 border-primary/50 text-foreground hover:bg-primary/40";
+    case "HELD":
+      return "bg-amber-100 border-amber-400 text-amber-900";
+    case "SOLD":
+      return "bg-muted border-border text-muted-foreground";
+  }
 }
 
 export function SeatMap({
@@ -47,7 +48,10 @@ export function SeatMap({
 
   function renderSeat(seat: Seat) {
     const selected = selectedSeatId === seat.id;
-    const className = seatClass(seat.status, selected);
+    const className = cn(
+      "inline-flex h-9 items-center justify-center rounded-md border text-xs font-semibold",
+      seatTone(seat.status, selected),
+    );
     const busy = reservingSeatId === seat.id;
 
     if (seat.status !== "AVAILABLE") {
@@ -66,7 +70,7 @@ export function SeatMap({
       <button
         key={seat.id}
         type="button"
-        className={className}
+        className={cn(className, "cursor-pointer disabled:cursor-wait disabled:opacity-75")}
         title={`Reservar ${seat.label}`}
         disabled={
           disabled || Boolean(reservingSeatId) || Boolean(selectedSeatId)
@@ -79,13 +83,16 @@ export function SeatMap({
   }
 
   return (
-    <div className={styles.bus}>
-      <div className={styles.driver}>Frente</div>
+    <div className="flex max-w-xs flex-col gap-2 rounded-xl border border-border bg-card p-4">
+      <div className="mb-1 text-center text-sm text-muted-foreground">Frente</div>
       {rows.map(({ row, seats: rowSeats }) => (
-        <div key={row} className={styles.seatRow}>
-          <span className={styles.rowNumber}>{row}</span>
+        <div
+          key={row}
+          className="grid grid-cols-[1.2rem_repeat(2,2.4rem)_0.9rem_repeat(2,2.4rem)] items-center gap-1.5"
+        >
+          <span className="text-xs text-muted-foreground">{row}</span>
           {rowSeats.slice(0, 2).map(renderSeat)}
-          <span className={styles.aisle} aria-hidden />
+          <span aria-hidden />
           {rowSeats.slice(2).map(renderSeat)}
         </div>
       ))}

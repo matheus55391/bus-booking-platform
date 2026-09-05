@@ -9,7 +9,8 @@ import {
   useTripSeats,
 } from "@/hooks";
 import type { Payment, Reservation, SeatsResponse } from "@/types";
-import styles from "@/app/page.module.css";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { CheckoutPanel } from "./checkout-panel";
 import { SeatMap } from "./seat-map";
 
@@ -57,44 +58,59 @@ export function BookingClient({ tripId, initialSeats }: Props) {
   const seatsData = seatsQuery.data ?? initialSeats;
 
   return (
-    <div className={styles.page}>
-      <header className={styles.header}>
-        <p className={styles.brand}>Rodoviária</p>
-        <h1 className={styles.title}>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
+      <header className="flex flex-col gap-2">
+        <p className="text-sm font-semibold uppercase tracking-wider text-primary">
+          Rodoviária
+        </p>
+        <h1 className="font-[family-name:var(--font-heading)] text-3xl font-bold tracking-tight sm:text-4xl">
           {seatsData.trip.origin} → {seatsData.trip.destination}
         </h1>
-        <p className={styles.subtitle}>
+        <p className="text-muted-foreground">
           {seatsData.trip.companyName} · selecione um assento livre
         </p>
-        <Link href="/" className={styles.backLink}>
+        <Link
+          href="/"
+          className={buttonVariants({
+            variant: "link",
+            className: "h-auto w-fit px-0",
+          })}
+        >
           ← Voltar à busca
         </Link>
       </header>
 
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {error ? (
+        <p
+          role="alert"
+          className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
 
-      <section className={styles.seatsSection}>
-        <h2>Assentos</h2>
-        <p className={styles.hint}>
-          Clique em um assento livre: ele fica reservado para você por 1
-          minuto.
-        </p>
-        <p className={styles.seatsMeta}>
-          {seatsData.summary.available} livres · {seatsData.summary.held}{" "}
-          reservados · {seatsData.summary.sold} ocupados
-        </p>
-        <div className={styles.legend}>
-          <span className={`${styles.legendItem} ${styles.available}`}>
-            Livre
-          </span>
-          <span className={`${styles.legendItem} ${styles.held}`}>
-            Reservado
-          </span>
-          <span className={`${styles.legendItem} ${styles.sold}`}>Ocupado</span>
-          <span className={`${styles.legendItem} ${styles.selectedLegend}`}>
-            Seu assento
-          </span>
+      <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <div>
+          <h2 className="font-[family-name:var(--font-heading)] text-xl font-bold">
+            Assentos
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Clique em um assento livre: ele fica reservado para você por 1
+            minuto.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {seatsData.summary.available} livres · {seatsData.summary.held}{" "}
+            reservados · {seatsData.summary.sold} ocupados
+          </p>
         </div>
+
+        <div className="flex flex-wrap gap-3 text-sm">
+          <LegendSwatch className="bg-primary/25 border-primary/50" label="Livre" />
+          <LegendSwatch className="bg-amber-100 border-amber-400" label="Reservado" />
+          <LegendSwatch className="bg-muted border-border" label="Ocupado" />
+          <LegendSwatch className="bg-foreground border-foreground" label="Seu assento" />
+        </div>
+
         <SeatMap
           seats={seatsData.seats}
           selectedSeatId={reservation?.seatId ?? null}
@@ -120,5 +136,23 @@ export function BookingClient({ tripId, initialSeats }: Props) {
         />
       ) : null}
     </div>
+  );
+}
+
+function LegendSwatch({
+  className,
+  label,
+}: {
+  className: string;
+  label: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span
+        className={cn("size-3 rounded-sm border", className)}
+        aria-hidden
+      />
+      {label}
+    </span>
   );
 }

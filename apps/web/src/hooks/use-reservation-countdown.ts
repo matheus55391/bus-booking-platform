@@ -16,7 +16,14 @@ export function useReservationCountdown(
   }, []);
 
   useEffect(() => {
-    if (!reservation || reservation.status !== "RESERVED" || !onRefresh) return;
+    if (
+      !reservation ||
+      (reservation.status !== "RESERVED" &&
+        reservation.status !== "PENDING_PAYMENT") ||
+      !onRefresh
+    ) {
+      return;
+    }
     const id = setInterval(() => {
       void getReservation(reservation.id)
         .then(onRefresh)

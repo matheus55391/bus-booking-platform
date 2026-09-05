@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import type { SeatHold } from '../reservations/reservations.types';
+import { SeatHold } from '../reservations/reservations.types';
 
 const KEY = {
   hold: (id: string) => `bus:hold:${id}`,
@@ -74,6 +74,30 @@ export class HoldStoreService implements OnModuleDestroy {
     pipeline.zadd(KEY.expiring, expiresAtMs, hold.id);
     await pipeline.exec();
     return hold;
+  }
+
+  /**
+   * Estende o hold durante o checkout (pagamento em andamento).
+   * Evita o cron liberar o assento no meio do pagamento.
+   */
+  async refresh(hold: SeatHold, ttlSeconds: number): Promise<SeatHold> {
+    const next: SeatHold = {
+      ...hold,
+      expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+    };
+    const expiresAtMs = new Date(next.expiresAt).getTime();
+    const pipeline = this.redis.pipeline();
+    pipeline.set(KEY.hold(next.id), JSON.stringify(next), 'EX', ttlSeconds);
+    pipeline.set(KEY.idem(next.idempotencyKey), next.id, 'EX', ttlSeconds);
+    pipeline.set(
+      KEY.seat(next.tripId, next.seatId),
+      next.id,
+      'EX',
+      ttlSeconds,
+    );
+    pipeline.zadd(KEY.expiring, expiresAtMs, next.id);
+    await pipeline.exec();
+    return next;
   }
 
   async delete(hold: SeatHold): Promise<void> {

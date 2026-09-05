@@ -17,6 +17,7 @@ Idioma: português brasileiro. Tom: direto, sênior.
 ## Fase atual
 
 Busca, mapa de assentos e **hold no Redis (1 min em dev, via `RESERVATION_HOLD_TTL_SECONDS`)** via Booking Service.
-Concorrência: `UPDATE Seat WHERE AVAILABLE` + Redis `SET NX` no assento; Postgres só no pagamento (CONFIRMED).
+Concorrência: `UPDATE Seat WHERE AVAILABLE` + Redis `SET NX` no assento;
+Postgres só a partir do pagamento (`PENDING_PAYMENT` → `CONFIRMED`).
 
 Ao fechar conceito: **🧠 Guarda essa frase para entrevista.**
