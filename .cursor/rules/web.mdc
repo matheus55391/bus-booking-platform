@@ -1,0 +1,11 @@
+---
+description: Frontend do passageiro — busca via Gateway
+globs: apps/web/**/*
+alwaysApply: false
+---
+
+# Web (passageiro)
+
+- Fase 1: busca de viagens + mapa de assentos (`GET /trips/:id/seats` via Gateway).
+- Chamar **somente** o API Gateway (`NEXT_PUBLIC_GATEWAY_URL`), nunca o trip-service direto.
+- Sem painel admin neste MVP.

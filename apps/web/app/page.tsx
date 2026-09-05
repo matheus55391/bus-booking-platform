@@ -1,102 +1,278 @@
-import Image, { type ImageProps } from "next/image";
-import { Button } from "@repo/ui/button";
-import styles from "./page.module.css";
+'use client';
 
-type Props = Omit<ImageProps, "src"> & {
-  srcLight: string;
-  srcDark: string;
+import { FormEvent, useMemo, useState } from 'react';
+import styles from './page.module.css';
+
+type Trip = {
+  id: string;
+  origin: string;
+  destination: string;
+  departureAt: string;
+  arrivalAt: string;
+  priceCents: number;
+  companyName: string;
+  availableSeats: number;
 };
 
-const ThemeImage = (props: Props) => {
-  const { srcLight, srcDark, ...rest } = props;
-
-  return (
-    <>
-      <Image {...rest} src={srcLight} className="imgLight" />
-      <Image {...rest} src={srcDark} className="imgDark" />
-    </>
-  );
+type SearchResponse = {
+  query: { origin: string; destination: string; date: string };
+  count: number;
+  trips: Trip[];
 };
+
+type SeatStatus = 'AVAILABLE' | 'HELD' | 'SOLD';
+
+type Seat = {
+  id: string;
+  label: string;
+  row: number;
+  column: number;
+  status: SeatStatus;
+};
+
+type SeatsResponse = {
+  trip: Omit<Trip, 'availableSeats'>;
+  summary: { available: number; held: number; sold: number };
+  seats: Seat[];
+};
+
+const gatewayUrl =
+  process.env.NEXT_PUBLIC_GATEWAY_URL ?? 'http://localhost:3001';
+
+function formatMoney(cents: number) {
+  return (cents / 100).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  });
+}
+
+function statusLabel(status: SeatStatus) {
+  switch (status) {
+    case 'AVAILABLE':
+      return 'Livre';
+    case 'HELD':
+      return 'Reservado';
+    case 'SOLD':
+      return 'Ocupado';
+  }
+}
 
 export default function Home() {
+  const [origin, setOrigin] = useState('Aracaju');
+  const [destination, setDestination] = useState('Salvador');
+  const [date, setDate] = useState('2026-09-10');
+  const [loading, setLoading] = useState(false);
+  const [seatsLoading, setSeatsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<SearchResponse | null>(null);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [seatsData, setSeatsData] = useState<SeatsResponse | null>(null);
+
+  const rows = useMemo(() => {
+    if (!seatsData) return [];
+    const map = new Map<number, Seat[]>();
+    for (const seat of seatsData.seats) {
+      const list = map.get(seat.row) ?? [];
+      list.push(seat);
+      map.set(seat.row, list);
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([row, seats]) => ({
+        row,
+        seats: seats.sort((a, b) => a.column - b.column),
+      }));
+  }, [seatsData]);
+
+  async function onSearch(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSelectedTripId(null);
+    setSeatsData(null);
+
+    const params = new URLSearchParams({ origin, destination, date });
+
+    try {
+      const response = await fetch(`${gatewayUrl}/trips/search?${params}`);
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(body || `Erro ${response.status}`);
+      }
+      const data = (await response.json()) as SearchResponse;
+      setResult(data);
+    } catch (err) {
+      setResult(null);
+      setError(err instanceof Error ? err.message : 'Falha na busca');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onSelectTrip(tripId: string) {
+    setSelectedTripId(tripId);
+    setSeatsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${gatewayUrl}/trips/${tripId}/seats`);
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(body || `Erro ${response.status}`);
+      }
+      const data = (await response.json()) as SeatsResponse;
+      setSeatsData(data);
+    } catch (err) {
+      setSeatsData(null);
+      setError(err instanceof Error ? err.message : 'Falha ao carregar assentos');
+    } finally {
+      setSeatsLoading(false);
+    }
+  }
+
   return (
     <div className={styles.page}>
-      <main className={styles.main}>
-        <ThemeImage
-          className={styles.logo}
-          srcLight="turborepo-dark.svg"
-          srcDark="turborepo-light.svg"
-          alt="Turborepo logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>apps/web/app/page.tsx</code>
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+      <header className={styles.header}>
+        <p className={styles.brand}>Rodoviária</p>
+        <h1 className={styles.title}>Buscar viagens</h1>
+        <p className={styles.subtitle}>
+          Listagem e mapa de assentos via Gateway → Trip Service
+        </p>
+      </header>
 
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new/clone?demo-description=Learn+to+implement+a+monorepo+with+a+two+Next.js+sites+that+has+installed+three+local+packages.&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F4K8ZISWAzJ8X1504ca0zmC%2F0b21a1c6246add355e55816278ef54bc%2FBasic.png&demo-title=Monorepo+with+Turborepo&demo-url=https%3A%2F%2Fexamples-basic-web.vercel.sh%2F&from=templates&project-name=Monorepo+with+Turborepo&repository-name=monorepo-turborepo&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fturborepo%2Ftree%2Fmain%2Fexamples%2Fbasic&root-directory=apps%2Fdocs&skippable-integrations=1&teamSlug=vercel&utm_source=create-turbo"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://turborepo.dev/docs?utm_source"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
-        </div>
-        <Button appName="web" className={styles.secondary}>
-          Open alert
-        </Button>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com/templates?search=turborepo&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
+      <form className={styles.form} onSubmit={onSearch}>
+        <label className={styles.field}>
+          <span>Origem</span>
+          <input
+            value={origin}
+            onChange={(e) => setOrigin(e.target.value)}
+            required
           />
-          Examples
-        </a>
-        <a
-          href="https://turborepo.dev?utm_source=create-turbo"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
+        </label>
+        <label className={styles.field}>
+          <span>Destino</span>
+          <input
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            required
           />
-          Go to turborepo.dev →
-        </a>
-      </footer>
+        </label>
+        <label className={styles.field}>
+          <span>Data</span>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            required
+          />
+        </label>
+        <button className={styles.submit} type="submit" disabled={loading}>
+          {loading ? 'Buscando…' : 'Buscar'}
+        </button>
+      </form>
+
+      {error ? <p className={styles.error}>{error}</p> : null}
+
+      {result ? (
+        <section className={styles.results}>
+          <h2>
+            {result.count} viagem(ns) · {result.query.origin} →{' '}
+            {result.query.destination}
+          </h2>
+          {result.trips.length === 0 ? (
+            <p className={styles.empty}>Nenhuma viagem encontrada.</p>
+          ) : (
+            <ul className={styles.list}>
+              {result.trips.map((trip) => {
+                const active = trip.id === selectedTripId;
+                return (
+                  <li key={trip.id}>
+                    <button
+                      type="button"
+                      className={`${styles.trip} ${active ? styles.tripActive : ''}`}
+                      onClick={() => onSelectTrip(trip.id)}
+                    >
+                      <div>
+                        <strong>{trip.companyName}</strong>
+                        <p>
+                          {formatTime(trip.departureAt)} →{' '}
+                          {formatTime(trip.arrivalAt)}
+                        </p>
+                        <p>{trip.availableSeats} assentos livres</p>
+                      </div>
+                      <div className={styles.price}>
+                        {formatMoney(trip.priceCents)}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {selectedTripId ? (
+        <section className={styles.seatsSection}>
+          <h2>Assentos</h2>
+          {seatsLoading ? <p className={styles.empty}>Carregando mapa…</p> : null}
+          {seatsData && !seatsLoading ? (
+            <>
+              <p className={styles.seatsMeta}>
+                {seatsData.trip.companyName} · {seatsData.summary.available}{' '}
+                livres · {seatsData.summary.held} reservados ·{' '}
+                {seatsData.summary.sold} ocupados
+              </p>
+              <div className={styles.legend}>
+                <span className={`${styles.legendItem} ${styles.available}`}>
+                  Livre
+                </span>
+                <span className={`${styles.legendItem} ${styles.held}`}>
+                  Reservado
+                </span>
+                <span className={`${styles.legendItem} ${styles.sold}`}>
+                  Ocupado
+                </span>
+              </div>
+              <div className={styles.bus}>
+                <div className={styles.driver}>Frente</div>
+                {rows.map(({ row, seats }) => (
+                  <div key={row} className={styles.seatRow}>
+                    <span className={styles.rowNumber}>{row}</span>
+                    {seats.slice(0, 2).map((seat) => (
+                      <span
+                        key={seat.id}
+                        className={`${styles.seat} ${styles[seat.status.toLowerCase() as 'available' | 'held' | 'sold']}`}
+                        title={`${seat.label} — ${statusLabel(seat.status)}`}
+                      >
+                        {seat.label}
+                      </span>
+                    ))}
+                    <span className={styles.aisle} aria-hidden />
+                    {seats.slice(2).map((seat) => (
+                      <span
+                        key={seat.id}
+                        className={`${styles.seat} ${styles[seat.status.toLowerCase() as 'available' | 'held' | 'sold']}`}
+                        title={`${seat.label} — ${statusLabel(seat.status)}`}
+                      >
+                        {seat.label}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }

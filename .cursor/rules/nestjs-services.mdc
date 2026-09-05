@@ -1,0 +1,12 @@
+---
+description: NestJS gateway e trip-service — proxy, busca, Postgres
+globs: apps/{gateway,trip-service}/**/*
+alwaysApply: false
+---
+
+# NestJS services (Fase 1)
+
+- `gateway`: só roteia/proxy; sem regra de domínio de viagem.
+- `trip-service`: dono de Trip/Seat + Postgres; `GET /trips/search` e `GET /trips/:tripId/seats`.
+- Variáveis via `.env` / compose; não hardcode secrets.
+- Não acoplar RabbitMQ/Redis no fluxo de busca até haver necessidade.

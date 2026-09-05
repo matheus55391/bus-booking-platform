@@ -1,0 +1,27 @@
+---
+description: Núcleo do lab — arquitetura Fase 1 e escopo do fluxo de busca
+alwaysApply: true
+---
+
+# Lab core — bus booking (Fase 1)
+
+## Arquitetura
+
+```text
+Web → Gateway (NestJS) → Trip Service → PostgreSQL
+Compose: Postgres, RabbitMQ, Redis
+```
+
+## Escopo agora
+
+Só o fluxo de **busca de viagens** (origem, destino, data).
+
+Não implementar ainda: hold/pagamento completo, admin UI, integrações externas.
+
+## Apps
+
+- `apps/web` — UI passageiro
+- `apps/gateway` — BFF/proxy HTTP
+- `apps/trip-service` — domínio Trip + Postgres
+
+RabbitMQ/Redis sobem no compose; usar só quando o fluxo exigir.
