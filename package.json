@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "pnpm --filter @repo/events build && pnpm --filter @repo/observability build && turbo run build",
-    "dev": "pnpm --filter @repo/events build && pnpm --filter @repo/observability build && turbo run dev --filter=web --filter=gateway --filter=trip-service --filter=booking-service --filter=payment-service",
+    "dev": "pnpm --filter @repo/events build && pnpm --filter @repo/observability build && turbo run dev --filter=web --filter=api-gateway --filter=trip-service --filter=booking-service --filter=payment-service",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",

@@ -18,7 +18,7 @@ describe('AppController', () => {
     it('should return ok', () => {
       expect(appController.health()).toEqual({
         status: 'ok',
-        service: 'gateway',
+        service: 'api-gateway',
       });
     });
   });

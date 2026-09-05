@@ -12,7 +12,7 @@ import { PaymentsModule } from './payments/payments.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '../../.env'],
+      envFilePath: ['.env', '../../../.env'],
     }),
     ObservabilityModule,
     HttpModule.register({ timeout: 15_000 }),

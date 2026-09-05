@@ -12,7 +12,7 @@ import { ReservationsModule } from './reservations/reservations.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env', '../../.env'],
+      envFilePath: ['.env', '../../../.env'],
     }),
     ScheduleModule.forRoot(),
     ObservabilityModule,

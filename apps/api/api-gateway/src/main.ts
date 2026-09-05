@@ -3,8 +3,8 @@ import { createLogger, startTelemetry } from '@repo/observability';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  await startTelemetry('gateway');
-  const log = createLogger('gateway');
+  await startTelemetry('api-gateway');
+  const log = createLogger('api-gateway');
   const app = await NestFactory.create(AppModule, { logger: false });
   app.enableCors({
     origin: [
