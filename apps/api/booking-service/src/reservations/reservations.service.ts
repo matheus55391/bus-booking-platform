@@ -16,9 +16,15 @@ import {
   SeatReservedEvent,
 } from '@repo/events';
 import { createCounter } from '@repo/observability';
+import type { CreateReservationInput } from '@repo/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RabbitMqService } from '../messaging/rabbitmq.service';
+import type {
+  ExpiredReservationRow,
+  LockedSeat,
+  TripPrice,
+} from './reservations.types';
 
 const HOLD_MINUTES = 10;
 
@@ -31,29 +37,6 @@ const reservationsConfirmed = createCounter(
   'booking_reservations_confirmed_total',
   'Reservations confirmed after payment',
 );
-
-export type CreateReservationInput = {
-  tripId: string;
-  seatId: string;
-  userId?: string;
-  idempotencyKey: string;
-};
-
-type LockedSeat = {
-  id: string;
-  label: string;
-  status: string;
-};
-
-type TripPrice = {
-  priceCents: number;
-};
-
-type ExpiredRow = {
-  id: string;
-  seatId: string;
-  tripId: string;
-};
 
 @Injectable()
 export class ReservationsService implements OnModuleInit {
@@ -254,7 +237,7 @@ export class ReservationsService implements OnModuleInit {
   async expireReservations() {
     try {
       const expired = await this.prisma.$transaction(async (tx) => {
-        const rows = await tx.$queryRaw<ExpiredRow[]>`
+        const rows = await tx.$queryRaw<ExpiredReservationRow[]>`
           UPDATE "Reservation"
           SET status = 'EXPIRED', "updatedAt" = NOW()
           WHERE status = 'RESERVED'

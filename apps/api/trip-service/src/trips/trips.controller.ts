@@ -1,21 +1,20 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller } from '@nestjs/common';
+import { MessagePattern, Payload } from '@nestjs/microservices';
+import { TripTopics } from '@repo/common';
+import type { SearchTripsQuery } from '@repo/common';
 import { TripsService } from './trips.service';
 
-@Controller('trips')
+@Controller()
 export class TripsController {
   constructor(private readonly tripsService: TripsService) {}
 
-  @Get('search')
-  search(
-    @Query('origin') origin?: string,
-    @Query('destination') destination?: string,
-    @Query('date') date?: string,
-  ) {
-    return this.tripsService.search({ origin, destination, date });
+  @MessagePattern(TripTopics.Search)
+  search(@Payload() query: SearchTripsQuery) {
+    return this.tripsService.search(query);
   }
 
-  @Get(':tripId/seats')
-  getSeats(@Param('tripId') tripId: string) {
-    return this.tripsService.getSeats(tripId);
+  @MessagePattern(TripTopics.GetSeats)
+  getSeats(@Payload() data: { tripId: string }) {
+    return this.tripsService.getSeats(data.tripId);
   }
 }

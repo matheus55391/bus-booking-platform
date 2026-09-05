@@ -18,6 +18,7 @@ src/
   lib/          format helpers
 ```
 
+- Contratos: `@repo/common` (web reexporta em `src/types`)
 - Só fala com `api-gateway` (`NEXT_PUBLIC_API_GATEWAY_URL` / `API_GATEWAY_URL`)
 - Busca: RHF + Zod · Reserva: TanStack Query
 - `Idempotency-Key` em reserve e pay

@@ -6,14 +6,15 @@ alwaysApply: true
 # Lab core
 
 ```text
-Web → API Gateway → Trip | Booking | Payment → PostgreSQL
-                     ↕ RabbitMQ
+Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Payment
+                                    ↕ eventos domínio (bus.events)
 Grafana LGTM (:3005) ← OTLP
 
-apps/
-  web/
-  api/   ← Nest backends
-    api-gateway | trip-service | booking-service | payment-service
+apps/api/api-gateway/src/app/
+  controllers/ services/ guards/ pipes/
+
+packages/common  ← contratos + topics/queues
+packages/events  ← seat.* / payment.*
 ```
 
 Booking dono da Reservation. Payment dono do Payment. Trip projeta assentos.

@@ -3,18 +3,33 @@
 ## Arquitetura
 
 ```text
-Web → API Gateway → Trip | Booking | Payment → PostgreSQL
-                     ↕ RabbitMQ (trace context)
-Apps → OTLP :4318 → Grafana LGTM (Prometheus + Loki + Tempo)
+Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Payment
+                      │                     ↕ domain events (seat.*, payment.*)
+                      │                   PostgreSQL
+Apps → OTLP :4318 → Grafana LGTM
 
 apps/
   web/
-  api/          # backends Nest
-    api-gateway/
-    trip-service/
+  api/
+    api-gateway/   # BFF HTTP; pasta app/{controllers,services,guards,pipes}
+    trip-service/  # trip_queue + HTTP health
     booking-service/
     payment-service/
+packages/
+  common/   # contratos + topics/queues (@repo/common)
+  events/   # payloads de domínio (@repo/events)
 ```
+
+## Comunicação
+
+| Caminho | Como |
+|---------|------|
+| Web → Gateway | HTTP |
+| Gateway → serviços | RabbitMQ RPC (`ClientProxy.send` / `@MessagePattern`) |
+| Payment → Booking (validar hold) | RabbitMQ RPC |
+| Booking/Payment → Trip (projeção) | eventos tópico `bus.events` |
+
+Filas RPC: `trip_queue`, `booking_queue`, `payment_queue`.
 
 ## Observabilidade (mínimo)
 

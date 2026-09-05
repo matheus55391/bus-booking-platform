@@ -1,36 +1,20 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Headers,
-  Param,
-  Post,
-} from '@nestjs/common';
+import { Controller } from '@nestjs/common';
+import { MessagePattern, Payload } from '@nestjs/microservices';
+import { PaymentTopics } from '@repo/common';
+import type { CreatePaymentInput } from '@repo/common';
 import { PaymentsService } from './payments.service';
 
-@Controller('payments')
+@Controller()
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
-  @Post()
-  create(
-    @Body()
-    body: {
-      reservationId: string;
-      amountCents: number;
-      userId?: string;
-      forceFail?: boolean;
-    },
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ) {
-    return this.paymentsService.create({
-      ...body,
-      idempotencyKey: idempotencyKey ?? '',
-    });
+  @MessagePattern(PaymentTopics.CreatePayment)
+  create(@Payload() input: CreatePaymentInput) {
+    return this.paymentsService.create(input);
   }
 
-  @Get(':id')
-  findById(@Param('id') id: string) {
-    return this.paymentsService.findById(id);
+  @MessagePattern(PaymentTopics.GetPayment)
+  findById(@Payload() data: { id: string }) {
+    return this.paymentsService.findById(data.id);
   }
 }

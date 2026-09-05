@@ -1,36 +1,20 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Headers,
-  Param,
-  Post,
-} from '@nestjs/common';
+import { Controller } from '@nestjs/common';
+import { MessagePattern, Payload } from '@nestjs/microservices';
+import { BookingTopics } from '@repo/common';
+import type { CreateReservationInput } from '@repo/common';
 import { ReservationsService } from './reservations.service';
 
-class CreateReservationDto {
-  tripId!: string;
-  seatId!: string;
-  userId?: string;
-}
-
-@Controller('reservations')
+@Controller()
 export class ReservationsController {
   constructor(private readonly reservationsService: ReservationsService) {}
 
-  @Post()
-  create(
-    @Body() body: CreateReservationDto,
-    @Headers('idempotency-key') idempotencyKey?: string,
-  ) {
-    return this.reservationsService.create({
-      ...body,
-      idempotencyKey: idempotencyKey ?? '',
-    });
+  @MessagePattern(BookingTopics.CreateReservation)
+  create(@Payload() input: CreateReservationInput) {
+    return this.reservationsService.create(input);
   }
 
-  @Get(':id')
-  findById(@Param('id') id: string) {
-    return this.reservationsService.findById(id);
+  @MessagePattern(BookingTopics.GetReservation)
+  findById(@Payload() data: { id: string }) {
+    return this.reservationsService.findById(data.id);
   }
 }

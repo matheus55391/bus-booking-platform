@@ -6,9 +6,9 @@ alwaysApply: false
 
 # NestJS services
 
-- `api-gateway`: só proxy HTTP; encaminha `Idempotency-Key`
-- Trip: catálogo + projeção de assentos via eventos `seat.*`
-- Booking: dono de Reservation; hold 10 min; confirma em `payment.approved`
-- Payment: dono de Payment; mock gateway externo; publica `payment.approved`
+- `api-gateway`: BFF HTTP; RPC via RabbitMQ (`RmqClientService`); pasta `app/{controllers,services,guards,pipes}`
+- Trip / Booking / Payment: `@MessagePattern` na fila do serviço + HTTP só para `/health` e `/metrics`
+- Eventos de domínio (`seat.*`, `payment.*`): exchange `bus.events` (`@repo/events`)
+- Contratos/topics: `@repo/common`
 - Prisma clients: `@bus/trip-prisma`, `@bus/booking-prisma`, `@bus/payment-prisma`
 - OTEL → `OTEL_EXPORTER_OTLP_ENDPOINT` (Grafana LGTM); `/metrics` Prometheus

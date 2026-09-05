@@ -1,11 +1,19 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  RequestTimeoutException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ClientProxy } from '@nestjs/microservices';
 import { PaymentStatus, Prisma } from '@bus/payment-prisma';
+import {
+  AppService,
+  BookingTopics,
+  type CreatePaymentInput,
+  type Reservation,
+} from '@repo/common';
 import {
   PaymentApprovedEvent,
   PaymentFailedEvent,
@@ -13,6 +21,7 @@ import {
 } from '@repo/events';
 import { createCounter } from '@repo/observability';
 import { randomUUID } from 'crypto';
+import { firstValueFrom, TimeoutError, timeout } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { RabbitMqService } from '../messaging/rabbitmq.service';
 
@@ -22,15 +31,6 @@ const paymentsTotal = createCounter(
   ['result'],
 );
 
-export type CreatePaymentInput = {
-  reservationId: string;
-  amountCents: number;
-  userId?: string;
-  idempotencyKey: string;
-  /** Simulate failure for demos */
-  forceFail?: boolean;
-};
-
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -38,7 +38,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rabbit: RabbitMqService,
-    private readonly config: ConfigService,
+    @Inject(AppService.Booking) private readonly bookingClient: ClientProxy,
   ) {}
 
   async create(input: CreatePaymentInput) {
@@ -64,22 +64,21 @@ export class PaymentsService {
       return this.toResponse(existing, true);
     }
 
-    // Valida reserva ainda RESERVED no booking-service
-    const bookingUrl = this.config.get<string>(
-      'BOOKING_SERVICE_URL',
-      'http://localhost:3003',
-    );
-    const reservationRes = await fetch(
-      `${bookingUrl}/reservations/${reservationId}`,
-    );
-    if (!reservationRes.ok) {
+    // Valida reserva ainda RESERVED no booking-service (RPC RMQ)
+    let reservation: Reservation;
+    try {
+      reservation = await firstValueFrom(
+        this.bookingClient
+          .send<Reservation>(BookingTopics.GetReservation, { id: reservationId })
+          .pipe(timeout(10_000)),
+      );
+    } catch (error) {
+      if (error instanceof TimeoutError) {
+        throw new RequestTimeoutException('booking-service timeout');
+      }
       throw new NotFoundException(`reservation ${reservationId} not found`);
     }
-    const reservation = (await reservationRes.json()) as {
-      status: string;
-      amountCents: number;
-      expiresAt: string;
-    };
+
     if (reservation.status !== 'RESERVED') {
       throw new BadRequestException(
         `reservation is ${reservation.status}, expected RESERVED`,

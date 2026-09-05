@@ -9,8 +9,8 @@ apps/
 ```
 
 ```text
-Web → API Gateway → Booking → RabbitMQ → Payment → RabbitMQ → Booking (CONFIRMED)
-                              ↘ RabbitMQ → Trip (projeção do assento)
+Web ──HTTP──► API Gateway ──RMQ RPC──► Booking / Trip / Payment
+                                    ↕ eventos (seat.*, payment.*)
 ```
 
 ## Subir

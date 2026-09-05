@@ -4,13 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { SeatStatus } from '@bus/trip-prisma';
+import type { SearchTripsQuery } from '@repo/common';
 import { PrismaService } from '../prisma/prisma.service';
-
-export type SearchTripsQuery = {
-  origin?: string;
-  destination?: string;
-  date?: string;
-};
 
 @Injectable()
 export class TripsService {

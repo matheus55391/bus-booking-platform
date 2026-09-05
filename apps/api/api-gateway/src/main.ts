@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { createLogger, startTelemetry } from '@repo/observability';
-import { AppModule } from './app.module';
+import { AppModule } from './app/app.module';
 
 async function bootstrap() {
   await startTelemetry('api-gateway');
@@ -14,6 +14,6 @@ async function bootstrap() {
   });
   const port = Number(process.env.GATEWAY_PORT ?? 3001);
   await app.listen(port);
-  log.info('listening', { port });
+  log.info('listening', { port, transport: 'http→rmq' });
 }
 bootstrap();
