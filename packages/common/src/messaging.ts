@@ -16,3 +16,9 @@ export const AppService = {
 } as const;
 
 export type AppServiceName = (typeof AppService)[keyof typeof AppService];
+
+/** Tokens com RPC no Gateway (Notification só consome Fanout). */
+export type RpcServiceName =
+  | typeof AppService.Trip
+  | typeof AppService.Booking
+  | typeof AppService.Payment;

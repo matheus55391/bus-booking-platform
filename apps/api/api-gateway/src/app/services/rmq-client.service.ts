@@ -1,6 +1,6 @@
 import { Inject, Injectable, RequestTimeoutException } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { AppService, type AppServiceName } from '@repo/common';
+import { AppService, type RpcServiceName } from '@repo/common';
 import { firstValueFrom, TimeoutError, timeout } from 'rxjs';
 
 const RPC_TIMEOUT_MS = 15_000;
@@ -13,7 +13,7 @@ export class RmqClientService {
     @Inject(AppService.Payment) private readonly payment: ClientProxy,
   ) {}
 
-  private client(service: AppServiceName): ClientProxy {
+  private client(service: RpcServiceName): ClientProxy {
     switch (service) {
       case AppService.Trip:
         return this.trip;
@@ -29,7 +29,7 @@ export class RmqClientService {
   }
 
   async send<T>(
-    service: AppServiceName,
+    service: RpcServiceName,
     pattern: string,
     data: unknown,
   ): Promise<T> {
