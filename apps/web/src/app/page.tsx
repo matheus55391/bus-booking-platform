@@ -1,7 +1,7 @@
-import { searchTrips } from '../lib/api';
-import { searchTripsSchema } from '../lib/schemas';
-import { SearchForm } from '../components/search/search-form';
-import { TripList } from '../components/search/trip-list';
+import { searchTrips } from '@/api';
+import { SearchForm } from '@/components/search/search-form';
+import { TripList } from '@/components/search/trip-list';
+import { searchTripsSchema } from '@/schemas';
 import styles from './page.module.css';
 
 type SearchParams = Promise<{

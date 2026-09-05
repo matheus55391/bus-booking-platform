@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import { getTripSeats } from '../../../lib/api';
-import { BookingClient } from '../../../components/booking/booking-client';
+import { getTripSeats } from '@/api';
+import { BookingClient } from '@/components/booking/booking-client';
 import styles from '../../page.module.css';
 
 type Params = Promise<{ tripId: string }>;

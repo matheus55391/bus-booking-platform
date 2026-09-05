@@ -1,9 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
-import { statusLabel } from '../../lib/format';
-import type { Seat, SeatStatus } from '../../lib/types';
-import styles from '../../app/page.module.css';
+import { statusLabel } from '@/lib/format';
+import type { Seat, SeatStatus } from '@/types';
+import styles from '@/app/page.module.css';
 
 type Props = {
   seats: Seat[];
@@ -33,20 +32,18 @@ export function SeatMap({
   reservingSeatId,
   onSelect,
 }: Props) {
-  const rows = useMemo(() => {
-    const map = new Map<number, Seat[]>();
-    for (const seat of seats) {
-      const list = map.get(seat.row) ?? [];
-      list.push(seat);
-      map.set(seat.row, list);
-    }
-    return [...map.entries()]
-      .sort(([a], [b]) => a - b)
-      .map(([row, rowSeats]) => ({
-        row,
-        seats: rowSeats.sort((a, b) => a.column - b.column),
-      }));
-  }, [seats]);
+  const rowsMap = new Map<number, Seat[]>();
+  for (const seat of seats) {
+    const list = rowsMap.get(seat.row) ?? [];
+    list.push(seat);
+    rowsMap.set(seat.row, list);
+  }
+  const rows = [...rowsMap.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([row, rowSeats]) => ({
+      row,
+      seats: rowSeats.sort((a, b) => a.column - b.column),
+    }));
 
   function renderSeat(seat: Seat) {
     const selected = selectedSeatId === seat.id;

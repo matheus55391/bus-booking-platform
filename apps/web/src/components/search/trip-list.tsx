@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { formatMoney, formatTime } from '../../lib/format';
-import type { SearchResponse } from '../../lib/types';
-import styles from '../../app/page.module.css';
+import { formatMoney, formatTime } from '@/lib/format';
+import type { SearchResponse } from '@/types';
+import styles from '@/app/page.module.css';
 
 type Props = {
   result: SearchResponse;

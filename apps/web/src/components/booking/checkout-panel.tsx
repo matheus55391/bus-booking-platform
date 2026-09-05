@@ -1,8 +1,8 @@
 'use client';
 
-import { formatDateTime, formatMoney } from '../../lib/format';
-import type { Payment, Reservation } from '../../lib/types';
-import styles from '../../app/page.module.css';
+import { formatDateTime, formatMoney } from '@/lib/format';
+import type { Payment, Reservation } from '@/types';
+import styles from '@/app/page.module.css';
 
 type Props = {
   reservation: Reservation;

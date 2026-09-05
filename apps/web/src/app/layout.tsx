@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
-import { QueryProvider } from '../components/providers/query-provider';
+import { QueryProvider } from '@/context';
 import './globals.css';
 
 const geistSans = localFont({

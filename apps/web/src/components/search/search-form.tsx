@@ -3,8 +3,8 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
-import { searchTripsSchema, type SearchTripsInput } from '../../lib/schemas';
-import styles from '../../app/page.module.css';
+import { searchTripsSchema, type SearchTripsInput } from '@/schemas';
+import styles from '@/app/page.module.css';
 
 type Props = {
   defaults: SearchTripsInput;
