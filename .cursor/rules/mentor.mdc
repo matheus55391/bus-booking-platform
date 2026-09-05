@@ -16,7 +16,7 @@ Idioma: português brasileiro. Tom: direto, sênior.
 
 ## Fase atual
 
-Busca, mapa de assentos e **reserva temporária (10 min)** via Booking Service.
-Concorrência: transação + `UPDATE Seat WHERE AVAILABLE` + unique partial index.
+Busca, mapa de assentos e **hold no Redis (10 min, configurável via env)** via Booking Service.
+Concorrência: `UPDATE Seat WHERE AVAILABLE` + Redis `SET NX` no assento; Postgres só no pagamento (CONFIRMED).
 
 Ao fechar conceito: **🧠 Guarda essa frase para entrevista.**

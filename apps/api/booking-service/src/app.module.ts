@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { ObservabilityModule } from './observability/observability.module';
+import { RedisModule } from './redis/redis.module';
 import { ReservationsModule } from './reservations/reservations.module';
 
 @Module({
@@ -18,6 +19,7 @@ import { ReservationsModule } from './reservations/reservations.module';
     ObservabilityModule,
     PrismaModule,
     MessagingModule,
+    RedisModule,
     ReservationsModule,
   ],
   controllers: [AppController],

@@ -1,5 +1,3 @@
-/** Shapes internas do SQL / lock — não fazem parte do contrato HTTP. */
-
 export type LockedSeat = {
   id: string;
   label: string;
@@ -10,8 +8,15 @@ export type TripPrice = {
   priceCents: number;
 };
 
-export type ExpiredReservationRow = {
+/** Hold temporário (não pago) — fonte de verdade no Redis. */
+export type SeatHold = {
   id: string;
-  seatId: string;
   tripId: string;
+  seatId: string;
+  seatLabel: string;
+  userId: string;
+  amountCents: number;
+  idempotencyKey: string;
+  createdAt: string;
+  expiresAt: string;
 };
