@@ -17,7 +17,7 @@ export const AppService = {
 
 export type AppServiceName = (typeof AppService)[keyof typeof AppService];
 
-/** Tokens com RPC no Gateway (Notification só consome Fanout). */
+/** Tokens com RPC no Gateway (Notification só consome topic bus.topic). */
 export type RpcServiceName =
   | typeof AppService.Trip
   | typeof AppService.Booking

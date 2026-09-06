@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { createLogger } from '@repo/observability';
-import { PrismaService } from '../prisma/prisma.service';
 import { RabbitMqService } from '@repo/messaging';
+import { PrismaService } from '../prisma/prisma.service';
 
 const MAX_ATTEMPTS = 5;
 
@@ -16,7 +16,6 @@ export class OutboxRelayService {
     private readonly rabbit: RabbitMqService,
   ) {}
 
-  /** Dispara flush assíncrono (baixa latência após enqueue). */
   kick() {
     void this.flush();
   }

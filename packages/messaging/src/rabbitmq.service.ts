@@ -40,7 +40,7 @@ function dlqName(queue: string): string {
 }
 
 /**
- * Domínio via Fanout: publish(routingKey) → todos os consumidores com fila própria.
+ * Domínio via topic `bus.topic`: publish(routingKey) → filas bound à key.
  * Falha no consumer → nack(requeue=false) → DLX `bus.dlx` → `{queue}.dlq`.
  */
 @Injectable()
@@ -109,17 +109,22 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * @param bindingKeys routing keys (ou patterns tipo `seat.*`) bound no topic
+   * @param interestKeys filtro opcional no handler; default = bindingKeys exatos
+   */
   async subscribe(
     queue: string,
-    interestKeys: string[],
+    bindingKeys: string[],
     handler: MessageHandler,
+    interestKeys?: string[],
   ) {
     if (!this.channel) {
       throw new Error('RabbitMQ channel not ready');
     }
 
     const channel = this.channel;
-    const interest = new Set(interestKeys);
+    const interest = new Set(interestKeys ?? bindingKeys);
     const deadLetter = dlqName(queue);
 
     await channel.assertQueue(deadLetter, { durable: true });
@@ -135,22 +140,26 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.log.error('queue_assert_failed_recreate_needed', {
         queue,
-        hint: 'Delete old queues in RabbitMQ UI or: rabbitmqctl delete_queue ' + queue,
+        hint:
+          'Delete old queues in RabbitMQ UI or: rabbitmqctl delete_queue ' +
+          queue,
         error: errorMessage(error),
       });
       throw error;
     }
 
-    await channel.bindQueue(queue, EXCHANGE, '');
+    for (const key of bindingKeys) {
+      await channel.bindQueue(queue, EXCHANGE, key);
+    }
 
     await channel.consume(queue, (msg) => {
       void this.handleConsumedMessage(msg, queue, interest, handler);
     });
 
-    this.log.info('subscribed (fanout+dlq)', {
+    this.log.info('subscribed (topic+dlq)', {
       queue,
       dlq: deadLetter,
-      interest: interestKeys.join(','),
+      bindings: bindingKeys.join(','),
       prefetch: PREFETCH,
     });
   }

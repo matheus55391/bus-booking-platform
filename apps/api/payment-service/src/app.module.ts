@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
+import { MessagingModule } from '@repo/messaging';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
-import { MessagingModule } from './messaging/messaging.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { PaymentsModule } from './payments/payments.module';
+import { OutboxModule } from './outbox/outbox.module';
 
 @Module({
   imports: [
@@ -13,9 +15,11 @@ import { PaymentsModule } from './payments/payments.module';
       isGlobal: true,
       envFilePath: ['.env', '../../../.env'],
     }),
+    ScheduleModule.forRoot(),
     ObservabilityModule,
     PrismaModule,
     MessagingModule,
+    OutboxModule,
     PaymentsModule,
   ],
   controllers: [AppController],

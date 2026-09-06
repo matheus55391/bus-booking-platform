@@ -1,14 +1,28 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { SeatStatus } from '@bus/trip-prisma';
-import type { SearchTripsQuery } from '@repo/common';
+import type {
+  HoldSeatInput,
+  HoldSeatResult,
+  SearchTripsQuery,
+  SeatLabelResult,
+  SeatMutationInput,
+} from '@repo/common';
+import { createLogger } from '@repo/observability';
 import { PrismaService } from '../prisma/prisma.service';
+
+/** HELD sem renovação (hold Redis ~1–2 min + folga). */
+const STALE_HELD_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class TripsService {
+  private readonly log = createLogger('trips');
+
   constructor(private readonly prisma: PrismaService) {}
 
   async search(query: SearchTripsQuery) {
@@ -97,5 +111,148 @@ export class TripsService {
         status: seat.status,
       })),
     };
+  }
+
+  async getSeat(input: SeatMutationInput): Promise<SeatLabelResult> {
+    const tripId = input.tripId?.trim();
+    const seatId = input.seatId?.trim();
+    if (!tripId || !seatId) {
+      throw new BadRequestException('tripId and seatId are required');
+    }
+
+    const seat = await this.prisma.seat.findFirst({
+      where: { id: seatId, tripId },
+    });
+    if (!seat) {
+      throw new NotFoundException(`seat ${seatId} not found on trip ${tripId}`);
+    }
+
+    return {
+      tripId,
+      seatId: seat.id,
+      seatLabel: seat.label,
+      status: seat.status,
+    };
+  }
+
+  /** Único writer síncrono do hold: AVAILABLE → HELD + decrementa availableSeats. */
+  async holdSeat(input: HoldSeatInput): Promise<HoldSeatResult> {
+    const tripId = input.tripId?.trim();
+    const seatId = input.seatId?.trim();
+    if (!tripId || !seatId) {
+      throw new BadRequestException('tripId and seatId are required');
+    }
+
+    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
+    if (!trip) {
+      throw new NotFoundException(`trip ${tripId} not found`);
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: string; label: string }[]>`
+        UPDATE "Seat"
+        SET status = 'HELD', "updatedAt" = NOW()
+        WHERE id = ${seatId}
+          AND "tripId" = ${tripId}
+          AND status = 'AVAILABLE'
+        RETURNING id, label
+      `;
+      if (locked.length === 0) {
+        return null;
+      }
+      await tx.$executeRaw`
+        UPDATE "Trip"
+        SET "availableSeats" = GREATEST("availableSeats" - 1, 0),
+            "updatedAt" = NOW()
+        WHERE id = ${tripId}
+      `;
+      return locked[0];
+    });
+
+    if (!result) {
+      throw new ConflictException(
+        'Seat is not available for this trip (already held or sold)',
+      );
+    }
+
+    this.log.info('seat_held', { tripId, seatId, seatLabel: result.label });
+    return {
+      tripId,
+      seatId: result.id,
+      seatLabel: result.label,
+      priceCents: trip.priceCents,
+      origin: trip.origin,
+      destination: trip.destination,
+    };
+  }
+
+  async confirmSeat(input: SeatMutationInput) {
+    const tripId = input.tripId?.trim();
+    const seatId = input.seatId?.trim();
+    if (!tripId || !seatId) {
+      throw new BadRequestException('tripId and seatId are required');
+    }
+
+    await this.prisma.$executeRaw`
+      UPDATE "Seat"
+      SET status = 'SOLD', "updatedAt" = NOW()
+      WHERE id = ${seatId}
+        AND "tripId" = ${tripId}
+        AND status IN ('HELD', 'SOLD')
+    `;
+    this.log.info('seat_sold', { tripId, seatId });
+    return { ok: true };
+  }
+
+  async releaseSeat(input: SeatMutationInput) {
+    const tripId = input.tripId?.trim();
+    const seatId = input.seatId?.trim();
+    if (!tripId || !seatId) {
+      throw new BadRequestException('tripId and seatId are required');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const released = await tx.$queryRaw<{ id: string }[]>`
+        UPDATE "Seat"
+        SET status = 'AVAILABLE', "updatedAt" = NOW()
+        WHERE id = ${seatId}
+          AND "tripId" = ${tripId}
+          AND status = 'HELD'
+        RETURNING id
+      `;
+      if (released.length > 0) {
+        await tx.$executeRaw`
+          UPDATE "Trip"
+          SET "availableSeats" = "availableSeats" + 1,
+              "updatedAt" = NOW()
+          WHERE id = ${tripId}
+        `;
+      }
+    });
+    this.log.info('seat_released', { tripId, seatId });
+    return { ok: true };
+  }
+
+  /** Healing: HELD antigo sem renovação (Booking não escreve Seat). */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async healStaleHeld() {
+    try {
+      const cutoff = new Date(Date.now() - STALE_HELD_MS);
+      const stale = await this.prisma.seat.findMany({
+        where: { status: SeatStatus.HELD, updatedAt: { lt: cutoff } },
+        take: 50,
+      });
+      for (const seat of stale) {
+        await this.releaseSeat({ tripId: seat.tripId, seatId: seat.id });
+        this.log.warn('healed_stale_held_seat', {
+          seatId: seat.id,
+          tripId: seat.tripId,
+        });
+      }
+    } catch (error) {
+      this.log.error('heal_stale_held_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }

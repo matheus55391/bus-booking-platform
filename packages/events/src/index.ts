@@ -1,12 +1,12 @@
-/** Fanout de domínio: 1 exchange, N filas (uma por consumidor). */
-export const EXCHANGE = "bus.fanout";
-export const EXCHANGE_TYPE = "fanout" as const;
+/** Domínio: topic exchange (routing key seleciona filas). */
+export const EXCHANGE = "bus.topic";
+export const EXCHANGE_TYPE = "topic" as const;
 
 /** Dead-letter: mensagens com nack(requeue=false) caem aqui. */
 export const DLX_EXCHANGE = "bus.dlx";
 export const DLX_EXCHANGE_TYPE = "fanout" as const;
 
-/** Tipo do evento (vai no payload + routing key da mensagem; fanout ignora a key p/ roteamento). */
+/** Routing keys = binding keys no topic `bus.topic`. */
 export const RoutingKeys = {
   SeatReserved: "seat.reserved",
   SeatConfirmed: "seat.confirmed",

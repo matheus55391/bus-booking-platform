@@ -19,6 +19,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@repo/common": "workspace:*",
     "@repo/events": "workspace:*",
+    "@repo/messaging": "workspace:*",
     "@repo/observability": "workspace:*",
     "amqplib": "^0.10.9",
     "nodemailer": "^7.0.3",

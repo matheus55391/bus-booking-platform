@@ -2,6 +2,10 @@
 export const TripTopics = {
   Search: "trip.search",
   GetSeats: "trip.get-seats",
+  GetSeat: "trip.get-seat",
+  HoldSeat: "trip.hold-seat",
+  ConfirmSeat: "trip.confirm-seat",
+  ReleaseSeat: "trip.release-seat",
 } as const;
 
 export const BookingTopics = {

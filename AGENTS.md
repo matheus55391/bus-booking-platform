@@ -5,7 +5,7 @@
 ```text
 Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Payment
                                            │
-                                Fanout bus.fanout
+                                Topic bus.topic
                              /         |          \
                         Trip      Booking     Notification → Mailpit
 Apps → OTLP :4318 → Grafana LGTM
@@ -14,8 +14,8 @@ apps/
   web/
   api/
     api-gateway/   # BFF HTTP; pasta app/{controllers,services,guards,pipes}
-    trip-service/  # trip_queue + HTTP health
-    booking-service/  # Reservation + Passenger + hold Redis
+    trip-service/  # trip_queue + inventário Seat
+    booking-service/  # Reservation + Passenger + hold Redis + Outbox
     payment-service/
     notification-service/  # e-mail via Mailpit
 packages/
@@ -32,11 +32,11 @@ Diagramas Mermaid: [docs/architecture.md](docs/architecture.md)
 | Web → Gateway | HTTP |
 | Gateway → serviços | RabbitMQ RPC (`ClientProxy.send` / `@MessagePattern`) |
 | Payment → Booking (begin payment) | RabbitMQ RPC |
-| Booking/Payment → Trip / Notification / Booking | Fanout `bus.fanout` + 1 fila por consumidor |
+| Booking/Payment → Trip / Notification / Booking | Topic `bus.topic` + 1 fila por consumidor |
 | Notification → Mailpit | SMTP `:1025` |
 
 Filas RPC: `trip_queue`, `booking_queue`, `payment_queue`.  
-Filas domínio (fanout): `trip_domain`, `booking_domain`, `notification_queue`.
+Filas domínio (topic): `trip_domain`, `booking_domain`, `notification_queue`.
 
 ## Observabilidade (mínimo)
 

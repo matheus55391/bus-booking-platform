@@ -36,3 +36,30 @@ export type SeatsResponse = {
   summary: { available: number; held: number; sold: number };
   seats: Seat[];
 };
+
+/** RPC trip.hold-seat — Trip é o único writer de Seat. */
+export type HoldSeatInput = {
+  tripId: string;
+  seatId: string;
+};
+
+export type HoldSeatResult = {
+  tripId: string;
+  seatId: string;
+  seatLabel: string;
+  priceCents: number;
+  origin: string;
+  destination: string;
+};
+
+export type SeatMutationInput = {
+  tripId: string;
+  seatId: string;
+};
+
+export type SeatLabelResult = {
+  tripId: string;
+  seatId: string;
+  seatLabel: string;
+  status: SeatStatus;
+};

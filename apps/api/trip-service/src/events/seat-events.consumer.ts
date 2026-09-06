@@ -6,22 +6,26 @@ import {
   SeatReservedEvent,
 } from '@repo/events';
 import { createCounter } from '@repo/observability';
-import { PrismaService } from '../prisma/prisma.service';
-import { RabbitMqService } from '../messaging/rabbitmq.service';
+import { RabbitMqService } from '@repo/messaging';
+import { TripsService } from '../trips/trips.service';
 
 const seatEvents = createCounter(
   'trip_seat_events_total',
-  'Seat projection events applied',
+  'Seat inventory events applied (Trip = sole writer)',
   ['type'],
 );
 
+/**
+ * Confirm/release via eventos.
+ * Hold síncrono: RPC `trip.hold-seat` (este handler só registra reserved).
+ */
 @Injectable()
 export class SeatEventsConsumer implements OnModuleInit {
   private readonly logger = new Logger(SeatEventsConsumer.name);
 
   constructor(
     private readonly rabbit: RabbitMqService,
-    private readonly prisma: PrismaService,
+    private readonly trips: TripsService,
   ) {}
 
   async onModuleInit() {
@@ -45,42 +49,29 @@ export class SeatEventsConsumer implements OnModuleInit {
   }
 
   private async onReserved(event: SeatReservedEvent) {
-    // Projeção: Booking já pode ter setado HELD; evento reforça consistência eventual
-    await this.prisma.$executeRaw`
-      UPDATE "Seat"
-      SET status = 'HELD', "updatedAt" = NOW()
-      WHERE id = ${event.seatId}
-        AND "tripId" = ${event.tripId}
-        AND status IN ('AVAILABLE', 'HELD')
-    `;
     seatEvents.inc({ type: 'reserved' });
     this.logger.log(
-      `SeatReserved projection seat=${event.seatLabel} trip=${event.tripId}`,
+      `SeatReserved ack seat=${event.seatLabel} trip=${event.tripId}`,
     );
   }
 
   private async onConfirmed(event: SeatConfirmedEvent) {
-    await this.prisma.$executeRaw`
-      UPDATE "Seat"
-      SET status = 'SOLD', "updatedAt" = NOW()
-      WHERE id = ${event.seatId}
-        AND "tripId" = ${event.tripId}
-    `;
+    await this.trips.confirmSeat({
+      tripId: event.tripId,
+      seatId: event.seatId,
+    });
     seatEvents.inc({ type: 'confirmed' });
-    this.logger.log(`SeatConfirmed projection seatId=${event.seatId}`);
+    this.logger.log(`SeatConfirmed seatId=${event.seatId}`);
   }
 
   private async onReleased(event: SeatReleasedEvent) {
-    await this.prisma.$executeRaw`
-      UPDATE "Seat"
-      SET status = 'AVAILABLE', "updatedAt" = NOW()
-      WHERE id = ${event.seatId}
-        AND "tripId" = ${event.tripId}
-        AND status = 'HELD'
-    `;
+    await this.trips.releaseSeat({
+      tripId: event.tripId,
+      seatId: event.seatId,
+    });
     seatEvents.inc({ type: 'released' });
     this.logger.log(
-      `SeatReleased projection seatId=${event.seatId} reason=${event.reason}`,
+      `SeatReleased seatId=${event.seatId} reason=${event.reason}`,
     );
   }
 }

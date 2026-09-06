@@ -8,7 +8,7 @@ alwaysApply: true
 ```text
 Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Payment
                                     │
-                         Fanout bus.fanout (1 fila / consumidor)
+                         Topic bus.topic (1 fila / consumidor)
                       /            |            \
                    Trip         Booking      Notification → Mailpit
 Grafana LGTM (:3005) ← OTLP
@@ -17,18 +17,18 @@ apps/api/api-gateway/src/app/
   controllers/ services/ guards/ pipes/
 
 packages/common  ← contratos + topics/queues
-packages/events  ← seat.* / payment.* (Fanout)
+packages/events  ← seat.* / payment.* (topic bus.topic)
 ```
 
-Booking dono da Reservation + Passenger + **Outbox**. Payment dono do Payment. Trip projeta assentos.
+Booking dono da Reservation + Passenger + **Outbox**. Payment dono do Payment. Trip dono de Trip/Seat.
 Notification consome eventos e envia e-mail (Mailpit em local).
 
 Hold não pago: Redis + outbox `seat.reserved` (não grava Reservation no PG).
 Postgres: Reservation entra em `PENDING_PAYMENT` no início do pagamento
 (com entidade `Passenger`); vira `CONFIRMED` / `CANCELLED` / `EXPIRED` depois.
-Eventos de domínio Booking: mesma tx → `OutboxEvent` → relay → `bus.fanout`.
+Eventos de domínio Booking: mesma tx → `OutboxEvent` → relay → `bus.topic`.
 Checkout: **saga orquestrada no Payment** (`CheckoutSaga` + `compensate-checkout` no Booking).
-Fanout: DLX `bus.dlx` + `{queue}.dlq`; Gateway throttles payments/lookup.
+Topic: DLX `bus.dlx` + `{queue}.dlq`; Gateway throttles payments/lookup.
 
 Idempotência obrigatória em reserva e pagamento.
 

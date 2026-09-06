@@ -5,7 +5,7 @@ import {
   RequestTimeoutException,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { CheckoutSagaStatus, PaymentStatus, Prisma } from '@bus/payment-prisma';
+import { CheckoutSagaStatus, Payment, PaymentStatus, Prisma } from '@bus/payment-prisma';
 import {
   AppService,
   BookingTopics,
@@ -21,7 +21,7 @@ import { createCounter, createLogger } from '@repo/observability';
 import { randomUUID } from 'crypto';
 import { firstValueFrom, TimeoutError, timeout } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
-import { RabbitMqService } from '../messaging/rabbitmq.service';
+import { OutboxService } from '../outbox/outbox.service';
 
 const paymentsTotal = createCounter(
   'payment_processed_total',
@@ -33,7 +33,7 @@ const paymentsTotal = createCounter(
  * Saga orquestrada de checkout (Payment = orquestrador):
  *  1) beginPayment (janela PENDING_PAYMENT)
  *  2) charge (mock gateway)
- *  3) publish payment.* → Booking confirma/libera
+ *  3) outbox payment.* → Booking confirma/libera
  *
  * Compensação: se falhar após (1), RPC booking.compensate-checkout.
  */
@@ -43,7 +43,7 @@ export class CheckoutSagaService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly rabbit: RabbitMqService,
+    private readonly outbox: OutboxService,
     @Inject(AppService.Booking) private readonly bookingClient: ClientProxy,
   ) {}
 
@@ -132,7 +132,7 @@ export class CheckoutSagaService {
     }
 
     // --- Step 2: cobrar ---
-    let payment;
+    let payment: Payment;
     try {
       payment = await this.createPaymentRow({
         reservationId,
@@ -149,24 +149,16 @@ export class CheckoutSagaService {
     const approved = !input.forceFail;
     await new Promise((r) => setTimeout(r, 150));
 
+    const paymentId = payment.id;
+
     try {
       if (approved) {
         const transactionId = `txn_${randomUUID().slice(0, 8)}`;
-        payment = await this.prisma.payment.update({
-          where: { id: payment.id },
-          data: {
-            status: PaymentStatus.APPROVED,
-            transactionId,
-          },
-        });
-
-        await this.setSaga(saga.id, { status: CheckoutSagaStatus.CHARGED });
-
         const event: PaymentApprovedEvent = {
           eventId: randomUUID(),
           type: RoutingKeys.PaymentApproved,
           occurredAt: new Date().toISOString(),
-          paymentId: payment.id,
+          paymentId,
           reservationId,
           amountCents: payment.amountCents,
           transactionId,
@@ -175,8 +167,26 @@ export class CheckoutSagaService {
           passengerEmail: reservation.passenger?.email ?? undefined,
           seatLabel: reservation.seatLabel ?? undefined,
         };
-        await this.publishWithRetry(RoutingKeys.PaymentApproved, event);
 
+        payment = await this.prisma.$transaction(async (tx) => {
+          const updated = await tx.payment.update({
+            where: { id: paymentId },
+            data: {
+              status: PaymentStatus.APPROVED,
+              transactionId,
+            },
+          });
+          await this.outbox.enqueue(
+            tx,
+            RoutingKeys.PaymentApproved,
+            event,
+            event.eventId,
+          );
+          return updated;
+        });
+        this.outbox.kickRelay();
+
+        await this.setSaga(saga.id, { status: CheckoutSagaStatus.CHARGED });
         await this.setSaga(saga.id, { status: CheckoutSagaStatus.COMPLETED });
         paymentsTotal.inc({ result: 'approved' });
         this.log.info('saga_completed', {
@@ -185,25 +195,33 @@ export class CheckoutSagaService {
           paymentId: payment.id,
         });
       } else {
-        payment = await this.prisma.payment.update({
-          where: { id: payment.id },
-          data: {
-            status: PaymentStatus.FAILED,
-            failureReason: 'gateway_declined',
-          },
-        });
-
         const event: PaymentFailedEvent = {
           eventId: randomUUID(),
           type: RoutingKeys.PaymentFailed,
           occurredAt: new Date().toISOString(),
-          paymentId: payment.id,
+          paymentId,
           reservationId,
           reason: 'gateway_declined',
         };
-        await this.publishWithRetry(RoutingKeys.PaymentFailed, event);
 
-        // Compensação explícita (RPC) + evento (coreografia) — idempotente no Booking
+        payment = await this.prisma.$transaction(async (tx) => {
+          const updated = await tx.payment.update({
+            where: { id: paymentId },
+            data: {
+              status: PaymentStatus.FAILED,
+              failureReason: 'gateway_declined',
+            },
+          });
+          await this.outbox.enqueue(
+            tx,
+            RoutingKeys.PaymentFailed,
+            event,
+            event.eventId,
+          );
+          return updated;
+        });
+        this.outbox.kickRelay();
+
         await this.compensate(saga.id, reservationId, 'gateway_declined');
         paymentsTotal.inc({ result: 'failed' });
         this.log.warn('saga_compensated_gateway_declined', {
@@ -214,7 +232,7 @@ export class CheckoutSagaService {
       }
     } catch (error) {
       const current = await this.prisma.payment.findUnique({
-        where: { id: payment.id },
+        where: { id: paymentId },
       });
       if (current?.status === PaymentStatus.APPROVED) {
         await this.setSaga(saga.id, {
@@ -330,22 +348,6 @@ export class CheckoutSagaService {
         error: errorMessage(error),
       });
     }
-  }
-
-  private async publishWithRetry(routingKey: string, payload: object) {
-    let lastError: unknown;
-    for (let i = 0; i < 3; i++) {
-      try {
-        await this.rabbit.publish(routingKey, payload);
-        return;
-      } catch (error) {
-        lastError = error;
-        await new Promise((r) => setTimeout(r, 100 * (i + 1)));
-      }
-    }
-    throw lastError instanceof Error
-      ? lastError
-      : new Error(String(lastError));
   }
 
   private async setSaga(

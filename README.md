@@ -8,7 +8,7 @@ MVP de estudo — busca, hold Redis, pagamento (saga), outbox, e-mail e observab
 |-----|------:|--------------|
 | [web](apps/web) | 3000 | UI guest checkout |
 | [api-gateway](apps/api/api-gateway) | 3001 | BFF HTTP → RPC (sem domínio) |
-| [trip-service](apps/api/trip-service) | 3002 | Trip + Seat (projeção) |
+| [trip-service](apps/api/trip-service) | 3002 | Trip + Seat |
 | [booking-service](apps/api/booking-service) | 3003 | Hold Redis, Reservation, Passenger, Outbox |
 | [payment-service](apps/api/payment-service) | 3004 | Payment + saga de checkout |
 | Grafana LGTM | 3005 | traces / metrics / logs |
@@ -18,7 +18,7 @@ MVP de estudo — busca, hold Redis, pagamento (saga), outbox, e-mail e observab
 ```text
 Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Payment
                                     │
-                         Fanout bus.fanout
+                         Topic bus.topic
                       /        |         \
                    Trip     Booking   Notification → Mailpit
 ```

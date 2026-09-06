@@ -1,10 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
   OnModuleInit,
+  RequestTimeoutException,
 } from '@nestjs/common';
+import { ClientProxy } from '@nestjs/microservices';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   PaymentMethod,
@@ -15,9 +18,12 @@ import type {
   BeginPaymentInput,
   CompensateCheckoutInput,
   CreateReservationInput,
+  HoldSeatResult,
   LookupReservationInput,
   PassengerData,
+  SeatLabelResult,
 } from '@repo/common';
+import { AppService, TripTopics } from '@repo/common';
 import {
   PaymentApprovedEvent,
   PaymentFailedEvent,
@@ -26,9 +32,10 @@ import {
   SeatReleasedEvent,
   SeatReservedEvent,
 } from '@repo/events';
+import { RabbitMqService } from '@repo/messaging';
 import { createLogger } from '@repo/observability';
 import { randomInt, randomUUID } from 'crypto';
-import { RabbitMqService } from '../messaging/rabbitmq.service';
+import { firstValueFrom, TimeoutError, timeout } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { HoldStoreService } from '../redis/hold-store.service';
 import { OutboxService } from '../outbox/outbox.service';
@@ -37,12 +44,7 @@ import {
   holdsCreated,
   holdsExpired,
 } from './reservations.metrics';
-import {
-  holdRoute,
-  LockedSeat,
-  SeatHold,
-  TripPrice,
-} from './reservations.types';
+import { holdRoute, SeatHold } from './reservations.types';
 
 /** Janela extra no Redis enquanto o pagamento roda. */
 const PAYMENT_HOLD_TTL_SECONDS = 120;
@@ -95,6 +97,14 @@ function parsePaymentMethod(value: string): PaymentMethod {
   throw new BadRequestException('paymentMethod must be PIX or CREDIT_CARD');
 }
 
+function rpcErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    const anyErr = error as Error & { message: string };
+    return anyErr.message;
+  }
+  return String(error);
+}
+
 @Injectable()
 export class ReservationsService implements OnModuleInit {
   private readonly log = createLogger('reservations');
@@ -104,6 +114,7 @@ export class ReservationsService implements OnModuleInit {
     private readonly rabbit: RabbitMqService,
     private readonly holds: HoldStoreService,
     private readonly outbox: OutboxService,
+    @Inject(AppService.Trip) private readonly tripClient: ClientProxy,
   ) {}
 
   async onModuleInit() {
@@ -123,7 +134,7 @@ export class ReservationsService implements OnModuleInit {
   }
 
   /**
-   * Cria hold no Redis + marca assento HELD + publica seat.reserved.
+   * Hold Redis + RPC trip.hold-seat (Trip = único writer de Seat) + outbox seat.reserved.
    * Não grava Reservation no Postgres.
    */
   async create(input: CreateReservationInput) {
@@ -158,66 +169,37 @@ export class ReservationsService implements OnModuleInit {
         origin: 'unknown',
         destination: 'unknown',
       });
-      return this.toDbResponse(existingPaid, null, true);
+      const label = await this.fetchSeatLabel(
+        existingPaid.tripId,
+        existingPaid.seatId,
+      );
+      return this.toDbResponse(existingPaid, label, true);
     }
 
     const expiresAt = new Date(Date.now() + this.holds.ttlSeconds * 1000);
     const holdId = randomUUID();
 
     try {
-      const trip = await this.prisma.$queryRaw<TripPrice[]>`
-        SELECT "priceCents", origin, destination
-        FROM "Trip"
-        WHERE id = ${tripId}
-        LIMIT 1
-      `;
-      if (trip.length === 0) {
-        throw new NotFoundException(`trip ${tripId} not found`);
-      }
+      const inventory = await this.tripHoldSeat(tripId, seatId);
 
-      const origin = trip[0].origin;
-      const destination = trip[0].destination;
-
-      const locked = await this.prisma.$queryRaw<LockedSeat[]>`
-        UPDATE "Seat"
-        SET status = 'HELD', "updatedAt" = NOW()
-        WHERE id = ${seatId}
-          AND "tripId" = ${tripId}
-          AND status = 'AVAILABLE'
-        RETURNING id, label, status::text AS status
-      `;
-
-      if (locked.length === 0) {
-        throw new ConflictException(
-          'Seat is not available for this trip (already held or sold)',
-        );
-      }
-
-      const seatLabel = locked[0].label;
       const hold: SeatHold = {
         id: holdId,
         tripId,
         seatId,
-        seatLabel,
+        seatLabel: inventory.seatLabel,
         userId,
-        amountCents: trip[0].priceCents,
+        amountCents: inventory.priceCents,
         idempotencyKey,
         createdAt: new Date().toISOString(),
         expiresAt: expiresAt.toISOString(),
-        origin,
-        destination,
+        origin: inventory.origin,
+        destination: inventory.destination,
       };
 
       const created = await this.holds.tryCreate(hold);
       if (created.status === 'idempotent') {
-        // Corrida: já gravamos HELD neste request, mas a key já existia — desfaz PG.
         if (created.hold.seatId !== seatId) {
-          await this.prisma.$executeRaw`
-            UPDATE "Seat"
-            SET status = 'AVAILABLE', "updatedAt" = NOW()
-            WHERE id = ${seatId}
-              AND status = 'HELD'
-          `;
+          await this.tripReleaseSeat(tripId, seatId);
         }
         holdsCreated.inc({
           result: 'idempotent',
@@ -226,50 +208,42 @@ export class ReservationsService implements OnModuleInit {
         return this.toHoldResponse(created.hold, true);
       }
       if (created.status === 'seat_taken') {
-        await this.prisma.$executeRaw`
-          UPDATE "Seat"
-          SET status = 'AVAILABLE', "updatedAt" = NOW()
-          WHERE id = ${seatId}
-            AND status = 'HELD'
-        `;
+        await this.tripReleaseSeat(tripId, seatId);
         throw new ConflictException(
           'Seat is not available for this trip (already held or sold)',
         );
       }
 
-      await this.prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`
-          UPDATE "Trip"
-          SET "availableSeats" = GREATEST("availableSeats" - 1, 0),
-              "updatedAt" = NOW()
-          WHERE id = ${tripId}
-        `;
+      const event: SeatReservedEvent = {
+        eventId: randomUUID(),
+        type: RoutingKeys.SeatReserved,
+        occurredAt: new Date().toISOString(),
+        reservationId: created.hold.id,
+        tripId: created.hold.tripId,
+        seatId: created.hold.seatId,
+        seatLabel: created.hold.seatLabel,
+        userId: created.hold.userId,
+        expiresAt: created.hold.expiresAt,
+        amountCents: created.hold.amountCents,
+      };
+      await this.outbox.enqueueStandalone(
+        RoutingKeys.SeatReserved,
+        event,
+      );
 
-        const event: SeatReservedEvent = {
-          eventId: randomUUID(),
-          type: RoutingKeys.SeatReserved,
-          occurredAt: new Date().toISOString(),
-          reservationId: created.hold.id,
-          tripId: created.hold.tripId,
-          seatId: created.hold.seatId,
-          seatLabel: created.hold.seatLabel,
-          userId: created.hold.userId,
-          expiresAt: created.hold.expiresAt,
-          amountCents: created.hold.amountCents,
-        };
-        await this.outbox.enqueue(tx, RoutingKeys.SeatReserved, event, event.eventId);
+      holdsCreated.inc({
+        result: 'created',
+        origin: inventory.origin,
+        destination: inventory.destination,
       });
-      this.outbox.kickRelay();
-
-      holdsCreated.inc({ result: 'created', origin, destination });
       this.log.info('hold_created', {
         holdId: created.hold.id,
         tripId,
         seatId,
-        seatLabel,
+        seatLabel: inventory.seatLabel,
         userId,
-        origin,
-        destination,
+        origin: inventory.origin,
+        destination: inventory.destination,
         amountCents: created.hold.amountCents,
         expiresAt: created.hold.expiresAt,
       });
@@ -306,17 +280,16 @@ export class ReservationsService implements OnModuleInit {
       throw new NotFoundException(`reservation ${id} not found`);
     }
 
-    const seats = await this.prisma.$queryRaw<{ label: string }[]>`
-      SELECT label FROM "Seat" WHERE id = ${reservation.seatId} LIMIT 1
-    `;
-
-    return this.toDbResponse(reservation, seats[0]?.label ?? null, false);
+    const seatLabel = await this.fetchSeatLabel(
+      reservation.tripId,
+      reservation.seatId,
+    );
+    return this.toDbResponse(reservation, seatLabel, false);
   }
 
   /**
    * Primeira gravação no Postgres: pagamento foi iniciado.
    * Hold continua no Redis até CONFIRMED ou FAILED.
-   * Cria Passenger + Reservation com método de pagamento.
    */
   async beginPayment(input: BeginPaymentInput) {
     const id = input.reservationId?.trim();
@@ -405,7 +378,6 @@ export class ReservationsService implements OnModuleInit {
           if (again) {
             return this.toDbResponse(again, refreshed.seatLabel, true);
           }
-          // colisão de orderCode — tenta de novo
           continue;
         }
         throw error;
@@ -415,7 +387,6 @@ export class ReservationsService implements OnModuleInit {
     throw new ConflictException('could not allocate orderCode');
   }
 
-  /** Consulta guest: orderCode + e-mail ou CPF do Passenger. */
   async lookup(input: LookupReservationInput) {
     const orderCode = input.orderCode?.trim().toUpperCase();
     const email = input.email?.trim().toLowerCase();
@@ -448,11 +419,11 @@ export class ReservationsService implements OnModuleInit {
       throw new NotFoundException('order not found');
     }
 
-    const seats = await this.prisma.$queryRaw<{ label: string }[]>`
-      SELECT label FROM "Seat" WHERE id = ${reservation.seatId} LIMIT 1
-    `;
-
-    return this.toDbResponse(reservation, seats[0]?.label ?? null, false);
+    const seatLabel = await this.fetchSeatLabel(
+      reservation.tripId,
+      reservation.seatId,
+    );
+    return this.toDbResponse(reservation, seatLabel, false);
   }
 
   async onPaymentApproved(event: PaymentApprovedEvent) {
@@ -475,8 +446,8 @@ export class ReservationsService implements OnModuleInit {
       return;
     }
 
-    const seatId = reservation?.seatId ?? hold!.seatId;
     const tripId = reservation?.tripId ?? hold!.tripId;
+    const seatId = reservation?.seatId ?? hold!.seatId;
 
     if (!reservation) {
       this.log.warn('payment_approved_without_reservation', {
@@ -516,13 +487,6 @@ export class ReservationsService implements OnModuleInit {
         }
         didConfirm = true;
 
-        await tx.$executeRaw`
-          UPDATE "Seat"
-          SET status = 'SOLD', "updatedAt" = NOW()
-          WHERE id = ${seatId}
-            AND status IN ('HELD', 'SOLD')
-        `;
-
         await this.outbox.enqueue(
           tx,
           RoutingKeys.SeatConfirmed,
@@ -552,7 +516,9 @@ export class ReservationsService implements OnModuleInit {
       await this.holds.delete(hold);
     }
 
-    const route = hold ? holdRoute(hold) : { origin: 'unknown', destination: 'unknown' };
+    const route = hold
+      ? holdRoute(hold)
+      : { origin: 'unknown', destination: 'unknown' };
     holdsConfirmed.inc(route);
     this.log.info('hold_confirmed', {
       holdId: event.reservationId,
@@ -581,10 +547,6 @@ export class ReservationsService implements OnModuleInit {
     });
   }
 
-  /**
-   * Compensação da saga de checkout: cancela PENDING_PAYMENT e libera hold/assento.
-   * Idempotente (CANCELLED / EXPIRED / sem hold = ok).
-   */
   async compensateCheckout(input: CompensateCheckoutInput) {
     const id = input.reservationId?.trim();
     if (!id) {
@@ -619,13 +581,7 @@ export class ReservationsService implements OnModuleInit {
       (reservation.status === ReservationStatus.PENDING_PAYMENT ||
         reservation.status === ReservationStatus.CANCELLED)
     ) {
-      // Hold já sumiu: ainda tenta liberar assento HELD órfão
-      await this.prisma.$executeRaw`
-        UPDATE "Seat"
-        SET status = 'AVAILABLE', "updatedAt" = NOW()
-        WHERE id = ${reservation.seatId}
-          AND status = 'HELD'
-      `;
+      await this.tripReleaseSeat(reservation.tripId, reservation.seatId);
     }
 
     this.log.warn('checkout_compensated', {
@@ -656,7 +612,6 @@ export class ReservationsService implements OnModuleInit {
           continue;
         }
 
-        // Checkout em andamento: não libera pelo TTL do hold inicial
         const pending = await this.prisma.reservation.findUnique({
           where: { id },
         });
@@ -664,7 +619,6 @@ export class ReservationsService implements OnModuleInit {
           if (new Date(hold.expiresAt).getTime() > Date.now()) {
             continue;
           }
-          // Janela de pagamento também expirou
           await this.prisma.reservation.update({
             where: { id },
             data: { status: ReservationStatus.EXPIRED },
@@ -685,9 +639,7 @@ export class ReservationsService implements OnModuleInit {
     }
   }
 
-  /**
-   * Healing: PENDING_PAYMENT expirado sem Redis, e Seat HELD órfão sem hold NX.
-   */
+  /** Healing: PENDING_PAYMENT expirado sem Redis → libera inventário via Trip RPC. */
   @Cron(CronExpression.EVERY_30_SECONDS)
   async healOrphans() {
     try {
@@ -707,61 +659,10 @@ export class ReservationsService implements OnModuleInit {
           where: { id: reservation.id },
           data: { status: ReservationStatus.EXPIRED },
         });
-        await this.prisma.$executeRaw`
-          UPDATE "Seat"
-          SET status = 'AVAILABLE', "updatedAt" = NOW()
-          WHERE id = ${reservation.seatId}
-            AND status = 'HELD'
-        `;
-        await this.prisma.$executeRaw`
-          UPDATE "Trip"
-          SET "availableSeats" = "availableSeats" + 1,
-              "updatedAt" = NOW()
-          WHERE id = ${reservation.tripId}
-        `;
+        await this.tripReleaseSeat(reservation.tripId, reservation.seatId);
         this.log.warn('healed_expired_pending_without_hold', {
           reservationId: reservation.id,
           seatId: reservation.seatId,
-        });
-      }
-
-      const heldSeats = await this.prisma.$queryRaw<
-        { id: string; tripId: string }[]
-      >`
-        SELECT id, "tripId" FROM "Seat"
-        WHERE status = 'HELD'
-        LIMIT 100
-      `;
-
-      for (const seat of heldSeats) {
-        const holdId = await this.holds.getHoldIdBySeat(seat.tripId, seat.id);
-        if (holdId) continue;
-
-        const activeCheckout = await this.prisma.reservation.findFirst({
-          where: {
-            seatId: seat.id,
-            tripId: seat.tripId,
-            status: ReservationStatus.PENDING_PAYMENT,
-            expiresAt: { gt: new Date() },
-          },
-        });
-        if (activeCheckout) continue;
-
-        await this.prisma.$executeRaw`
-          UPDATE "Seat"
-          SET status = 'AVAILABLE', "updatedAt" = NOW()
-          WHERE id = ${seat.id}
-            AND status = 'HELD'
-        `;
-        await this.prisma.$executeRaw`
-          UPDATE "Trip"
-          SET "availableSeats" = "availableSeats" + 1,
-              "updatedAt" = NOW()
-          WHERE id = ${seat.tripId}
-        `;
-        this.log.warn('healed_orphan_held_seat', {
-          seatId: seat.id,
-          tripId: seat.tripId,
         });
       }
     } catch (error) {
@@ -771,6 +672,7 @@ export class ReservationsService implements OnModuleInit {
     }
   }
 
+  /** Libera Redis + outbox seat.released (Trip aplica AVAILABLE). */
   private async releaseHold(hold: SeatHold, reason: 'EXPIRED' | 'CANCELLED') {
     await this.holds.delete(hold);
 
@@ -784,27 +686,7 @@ export class ReservationsService implements OnModuleInit {
       reason,
     };
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`
-        UPDATE "Seat"
-        SET status = 'AVAILABLE', "updatedAt" = NOW()
-        WHERE id = ${hold.seatId}
-          AND status = 'HELD'
-      `;
-      await tx.$executeRaw`
-        UPDATE "Trip"
-        SET "availableSeats" = "availableSeats" + 1,
-            "updatedAt" = NOW()
-        WHERE id = ${hold.tripId}
-      `;
-      await this.outbox.enqueue(
-        tx,
-        RoutingKeys.SeatReleased,
-        released,
-        released.eventId,
-      );
-    });
-    this.outbox.kickRelay();
+    await this.outbox.enqueueStandalone(RoutingKeys.SeatReleased, released);
 
     const route = holdRoute(hold);
     holdsExpired.inc({ ...route, reason });
@@ -817,6 +699,65 @@ export class ReservationsService implements OnModuleInit {
       ...route,
       reason,
     });
+  }
+
+  private async tripHoldSeat(
+    tripId: string,
+    seatId: string,
+  ): Promise<HoldSeatResult> {
+    try {
+      return await firstValueFrom(
+        this.tripClient
+          .send<HoldSeatResult>(TripTopics.HoldSeat, { tripId, seatId })
+          .pipe(timeout(8_000)),
+      );
+    } catch (error) {
+      if (error instanceof TimeoutError) {
+        throw new RequestTimeoutException('trip-service timeout on hold-seat');
+      }
+      const msg = rpcErrorMessage(error);
+      if (/not available|Conflict|409/i.test(msg)) {
+        throw new ConflictException(
+          'Seat is not available for this trip (already held or sold)',
+        );
+      }
+      if (/not found|404/i.test(msg)) {
+        throw new NotFoundException(`trip ${tripId} not found`);
+      }
+      throw error;
+    }
+  }
+
+  private async tripReleaseSeat(tripId: string, seatId: string) {
+    try {
+      await firstValueFrom(
+        this.tripClient
+          .send(TripTopics.ReleaseSeat, { tripId, seatId })
+          .pipe(timeout(8_000)),
+      );
+    } catch (error) {
+      this.log.error('trip_release_seat_failed', {
+        tripId,
+        seatId,
+        error: rpcErrorMessage(error),
+      });
+    }
+  }
+
+  private async fetchSeatLabel(
+    tripId: string,
+    seatId: string,
+  ): Promise<string | null> {
+    try {
+      const seat = await firstValueFrom(
+        this.tripClient
+          .send<SeatLabelResult>(TripTopics.GetSeat, { tripId, seatId })
+          .pipe(timeout(5_000)),
+      );
+      return seat.seatLabel;
+    } catch {
+      return null;
+    }
   }
 
   private toHoldResponse(hold: SeatHold, idempotentReplay: boolean) {

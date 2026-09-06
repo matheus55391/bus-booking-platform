@@ -11,7 +11,7 @@ import {
 } from '@repo/events';
 import { createLogger } from '@repo/observability';
 import { MailService } from '../mail/mail.service';
-import { RabbitMqService } from '../messaging/rabbitmq.service';
+import { RabbitMqService } from '@repo/messaging';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
