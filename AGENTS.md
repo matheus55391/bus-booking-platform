@@ -22,7 +22,8 @@ packages/
   common/   # contratos + topics/queues (@repo/common)
   events/   # payloads de domínio (@repo/events)
 
-Diagramas Mermaid: [docs/architecture.md](docs/architecture.md)
+Diagramas Mermaid: [docs/architecture.md](docs/architecture.md)  
+Visão / casos de uso / escolhas: [docs/project.md](docs/project.md)
 ```
 
 ## Comunicação

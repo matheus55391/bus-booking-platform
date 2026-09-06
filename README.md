@@ -23,7 +23,7 @@ Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Paym
                    Trip     Booking   Notification → Mailpit
 ```
 
-Diagramas: [docs/architecture.md](docs/architecture.md) · mapa curto: [AGENTS.md](AGENTS.md)
+Diagramas: [docs/architecture.md](docs/architecture.md) · visão + casos de uso: [docs/project.md](docs/project.md) · mapa curto: [AGENTS.md](AGENTS.md)
 
 ## Subir
 
