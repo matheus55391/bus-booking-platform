@@ -4,15 +4,22 @@ Cobrança e orquestração do checkout (`:3004`). Fila RPC: `payment_queue`.
 
 ## Responsabilidades
 
-- Dono de **Payment**, **CheckoutSaga** e **OutboxEvent**
-- Saga: `beginPayment` (Booking) → charge → outbox `payment.approved` / `payment.failed`
-- Idempotência: chave estável `pay-{reservationId}` + no máx. 1 PENDING/APPROVED por reserva
-- Se a cobrança falha depois do begin: RPC `booking.compensate-checkout`
+- Dono de **Payment**, **CheckoutSaga**, **OutboxEvent**, **PspWebhookEvent**
+- Saga: `beginPayment` → charge sync **ou** `asyncCharge` + webhook PSP
+- Idempotência create: `pay-{reservationId}`
+- Webhook: `payment.handle-psp-webhook` (via Gateway `POST /webhooks/psp`) — dedupe por `providerEventId`
+- Falha após begin: RPC `booking.compensate-checkout`
 
-## Não faz
+## Demo async PSP
 
-- Não é dono de Reservation / Passenger
+```http
+POST /payments  (asyncCharge: true) → status PENDING
+POST /webhooks/psp
+{ "providerEventId": "psp_evt_1", "paymentId": "...", "status": "APPROVED" }
+```
 
-🧠 *"Saga de checkout = orquestrador no Payment; se a cobrança falha depois do beginPayment, compensação libera o assento."*
+Replay do mesmo `providerEventId` → `idempotentReplay: true`.
+
+🧠 _"Saga de checkout = orquestrador no Payment; se a cobrança falha depois do beginPayment, compensação libera o assento."_
 
 Docs: [AGENTS.md](../../../AGENTS.md) · [architecture](../../../docs/architecture.md)

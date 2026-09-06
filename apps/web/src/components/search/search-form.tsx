@@ -1,16 +1,16 @@
-"use client";
+'use client';
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeftRight, CalendarDays, MapPin, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { Controller, useForm } from "react-hook-form";
-import { resolveCityValue } from "@/data/locations";
-import { searchTripsSchema, type SearchTripsInput } from "@/schemas";
-import { CityCombobox } from "@/components/search/city-combobox";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { zodResolver } from '@hookform/resolvers/zod';
+import { ArrowLeftRight, CalendarDays, MapPin, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Controller, useForm } from 'react-hook-form';
+import { resolveCityValue } from '@/data/locations';
+import { searchTripsSchema, type SearchTripsInput } from '@/schemas';
+import { CityCombobox } from '@/components/search/city-combobox';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 type Props = {
   defaults: SearchTripsInput;
@@ -31,12 +31,12 @@ export function SearchForm({ defaults, compact = false }: Props) {
     defaultValues: defaults,
   });
 
-  const origin = watch("origin");
-  const destination = watch("destination");
+  const origin = watch('origin');
+  const destination = watch('destination');
 
   function swapCities() {
-    setValue("origin", destination, { shouldValidate: true });
-    setValue("destination", origin, { shouldValidate: true });
+    setValue('origin', destination, { shouldValidate: true });
+    setValue('destination', origin, { shouldValidate: true });
   }
 
   function onSubmit(values: SearchTripsInput) {
@@ -53,8 +53,8 @@ export function SearchForm({ defaults, compact = false }: Props) {
       onSubmit={handleSubmit(onSubmit)}
       noValidate
       className={cn(
-        "relative z-10 w-full overflow-visible rounded-2xl bg-card text-card-foreground shadow-[0_16px_48px_-16px_rgba(20,32,25,0.35)]",
-        compact ? "p-3 sm:p-4" : "p-4 sm:p-6",
+        'relative z-10 w-full overflow-visible rounded-2xl bg-card text-card-foreground shadow-[0_16px_48px_-16px_rgba(20,32,25,0.35)]',
+        compact ? 'p-3 sm:p-4' : 'p-4 sm:p-6',
       )}
     >
       {!compact ? (
@@ -91,15 +91,15 @@ export function SearchForm({ defaults, compact = false }: Props) {
             icon={
               <MapPin
                 className={cn(
-                  "size-4 shrink-0",
-                  errors.origin ? "text-destructive" : "text-primary",
+                  'size-4 shrink-0',
+                  errors.origin ? 'text-destructive' : 'text-primary',
                 )}
                 aria-hidden
               />
             }
             className={cn(
-              "rounded-2xl sm:rounded-none sm:rounded-l-2xl",
-              errors.origin && "border border-destructive",
+              'rounded-2xl sm:rounded-none sm:rounded-l-2xl',
+              errors.origin && 'border border-destructive',
             )}
           >
             <Controller
@@ -111,7 +111,7 @@ export function SearchForm({ defaults, compact = false }: Props) {
                   invalid={Boolean(errors.origin)}
                   placeholder="De onde você vai sair?"
                   onChange={(city) => {
-                    setValue("origin", city, {
+                    setValue('origin', city, {
                       shouldValidate: true,
                       shouldDirty: true,
                     });
@@ -140,15 +140,15 @@ export function SearchForm({ defaults, compact = false }: Props) {
             icon={
               <MapPin
                 className={cn(
-                  "size-4 shrink-0",
-                  errors.destination ? "text-destructive" : "text-primary",
+                  'size-4 shrink-0',
+                  errors.destination ? 'text-destructive' : 'text-primary',
                 )}
                 aria-hidden
               />
             }
             className={cn(
-              "border-t sm:border-t-0 sm:border-l",
-              errors.destination && "border border-destructive sm:border",
+              'border-t sm:border-t-0 sm:border-l',
+              errors.destination && 'border border-destructive sm:border',
             )}
           >
             <Controller
@@ -160,7 +160,7 @@ export function SearchForm({ defaults, compact = false }: Props) {
                   invalid={Boolean(errors.destination)}
                   placeholder="Para onde você vai?"
                   onChange={(city) => {
-                    setValue("destination", city, {
+                    setValue('destination', city, {
                       shouldValidate: true,
                       shouldDirty: true,
                     });
@@ -177,24 +177,24 @@ export function SearchForm({ defaults, compact = false }: Props) {
             icon={
               <CalendarDays
                 className={cn(
-                  "size-4 shrink-0",
-                  errors.date ? "text-destructive" : "text-primary",
+                  'size-4 shrink-0',
+                  errors.date ? 'text-destructive' : 'text-primary',
                 )}
                 aria-hidden
               />
             }
             className={cn(
-              "rounded-2xl border-t sm:rounded-none sm:rounded-r-2xl sm:border-t-0 sm:border-l",
-              errors.date && "border border-destructive sm:border",
+              'rounded-2xl border-t sm:rounded-none sm:rounded-r-2xl sm:border-t-0 sm:border-l',
+              errors.date && 'border border-destructive sm:border',
             )}
           >
             <Input
               type="date"
-              {...register("date")}
+              {...register('date')}
               aria-invalid={Boolean(errors.date)}
               className={cn(
-                "h-10 border-0 bg-transparent px-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 aria-invalid:border-0 aria-invalid:ring-0",
-                errors.date && "text-destructive placeholder:text-destructive",
+                'h-10 border-0 bg-transparent px-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 aria-invalid:border-0 aria-invalid:ring-0',
+                errors.date && 'text-destructive placeholder:text-destructive',
               )}
             />
           </Field>
@@ -207,7 +207,7 @@ export function SearchForm({ defaults, compact = false }: Props) {
           className="h-14 shrink-0 rounded-full px-10 text-base font-bold shadow-md lg:self-center"
         >
           <Search data-icon="inline-start" />
-          {isSubmitting ? "Buscando…" : "Buscar"}
+          {isSubmitting ? 'Buscando…' : 'Buscar'}
         </Button>
       </div>
     </form>
@@ -230,14 +230,14 @@ function Field({
   return (
     <div
       className={cn(
-        "relative z-20 min-w-0 flex-1 overflow-visible px-4 py-2.5 transition-colors focus-within:bg-secondary/40",
+        'relative z-20 min-w-0 flex-1 overflow-visible px-4 py-2.5 transition-colors focus-within:bg-secondary/40',
         className,
       )}
     >
       <Label
         className={cn(
-          "text-xs font-medium",
-          invalid ? "text-destructive" : "text-muted-foreground",
+          'text-xs font-medium',
+          invalid ? 'text-destructive' : 'text-muted-foreground',
         )}
       >
         {label}

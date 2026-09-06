@@ -1,41 +1,26 @@
 import {
   BadRequestException,
   ConflictException,
-  Inject,
   Injectable,
   NotFoundException,
   OnModuleInit,
-  RequestTimeoutException,
 } from '@nestjs/common';
-import { ClientProxy } from '@nestjs/microservices';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import {
-  PaymentMethod,
-  Prisma,
-  ReservationStatus,
-} from '@bus/booking-prisma';
+import { Prisma, ReservationStatus } from '@bus/booking-prisma';
 import type {
   BeginPaymentInput,
   CompensateCheckoutInput,
   CreateReservationInput,
-  HoldSeatResult,
   LookupReservationInput,
-  PassengerData,
-  SeatLabelResult,
 } from '@repo/common';
-import { AppService, TripTopics } from '@repo/common';
 import {
   PaymentApprovedEvent,
   PaymentFailedEvent,
   RoutingKeys,
-  SeatConfirmedEvent,
-  SeatReleasedEvent,
-  SeatReservedEvent,
 } from '@repo/events';
 import { RabbitMqService } from '@repo/messaging';
 import { createLogger } from '@repo/observability';
-import { randomInt, randomUUID } from 'crypto';
-import { firstValueFrom, TimeoutError, timeout } from 'rxjs';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { HoldStoreService } from '../redis/hold-store.service';
 import { OutboxService } from '../outbox/outbox.service';
@@ -44,66 +29,26 @@ import {
   holdsCreated,
   holdsExpired,
 } from './reservations.metrics';
-import { holdRoute, SeatHold } from './reservations.types';
-
-/** Janela extra no Redis enquanto o pagamento roda. */
-const PAYMENT_HOLD_TTL_SECONDS = 120;
-
-const ORDER_CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-
-function digitsOnly(value: string): string {
-  return value.replace(/\D/g, '');
-}
-
-function generateOrderCode(): string {
-  let letters = '';
-  for (let i = 0; i < 3; i++) {
-    letters += ORDER_CODE_LETTERS[randomInt(ORDER_CODE_LETTERS.length)];
-  }
-  const nums = String(randomInt(1000, 10000));
-  return `${letters}-${nums}`;
-}
-
-function normalizePassenger(raw: PassengerData): PassengerData {
-  const name = raw.name?.trim() ?? '';
-  const email = raw.email?.trim().toLowerCase() ?? '';
-  const document = digitsOnly(raw.document ?? '');
-  const phone = digitsOnly(raw.phone ?? '');
-  const birthDate = raw.birthDate?.trim() ?? '';
-
-  if (name.length < 3) {
-    throw new BadRequestException('passenger.name is required');
-  }
-  if (!email.includes('@') || email.length < 5) {
-    throw new BadRequestException('passenger.email is invalid');
-  }
-  if (document.length !== 11) {
-    throw new BadRequestException('passenger.document must be a CPF (11 digits)');
-  }
-  if (phone.length < 10 || phone.length > 11) {
-    throw new BadRequestException('passenger.phone is invalid');
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
-    throw new BadRequestException('passenger.birthDate must be YYYY-MM-DD');
-  }
-
-  return { name, email, document, phone, birthDate };
-}
-
-function parsePaymentMethod(value: string): PaymentMethod {
-  if (value === 'PIX' || value === 'CREDIT_CARD') {
-    return value;
-  }
-  throw new BadRequestException('paymentMethod must be PIX or CREDIT_CARD');
-}
-
-function rpcErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    const anyErr = error as Error & { message: string };
-    return anyErr.message;
-  }
-  return String(error);
-}
+import {
+  toDbResponse,
+  toHoldResponse,
+  toSeatConfirmedEvent,
+  toSeatReleasedEvent,
+  toSeatReservedEvent,
+} from './reservations.mappers';
+import {
+  buildSeatHold,
+  holdRoute,
+  PAYMENT_HOLD_TTL_SECONDS,
+  type SeatHold,
+} from './reservations.types';
+import {
+  digitsOnly,
+  generateOrderCode,
+  normalizePassenger,
+  parsePaymentMethod,
+} from './reservations.validators';
+import { TripInventoryClient } from './trip-inventory.client';
 
 @Injectable()
 export class ReservationsService implements OnModuleInit {
@@ -114,7 +59,7 @@ export class ReservationsService implements OnModuleInit {
     private readonly rabbit: RabbitMqService,
     private readonly holds: HoldStoreService,
     private readonly outbox: OutboxService,
-    @Inject(AppService.Trip) private readonly tripClient: ClientProxy,
+    private readonly tripInventory: TripInventoryClient,
   ) {}
 
   async onModuleInit() {
@@ -134,7 +79,7 @@ export class ReservationsService implements OnModuleInit {
   }
 
   /**
-   * Hold Redis + RPC trip.hold-seat (Trip = único writer de Seat) + outbox seat.reserved.
+   * Hold Redis + RPC trip.hold-seat + outbox seat.reserved.
    * Não grava Reservation no Postgres.
    */
   async create(input: CreateReservationInput) {
@@ -156,7 +101,7 @@ export class ReservationsService implements OnModuleInit {
         result: 'idempotent',
         ...holdRoute(existingHold),
       });
-      return this.toHoldResponse(existingHold, true);
+      return this.holdResponse(existingHold, true);
     }
 
     const existingPaid = await this.prisma.reservation.findUnique({
@@ -169,67 +114,46 @@ export class ReservationsService implements OnModuleInit {
         origin: 'unknown',
         destination: 'unknown',
       });
-      const label = await this.fetchSeatLabel(
+      const label = await this.tripInventory.fetchSeatLabel(
         existingPaid.tripId,
         existingPaid.seatId,
       );
-      return this.toDbResponse(existingPaid, label, true);
+      return this.dbResponse(existingPaid, label, true);
     }
 
     const expiresAt = new Date(Date.now() + this.holds.ttlSeconds * 1000);
     const holdId = randomUUID();
 
     try {
-      const inventory = await this.tripHoldSeat(tripId, seatId);
-
-      const hold: SeatHold = {
-        id: holdId,
-        tripId,
-        seatId,
-        seatLabel: inventory.seatLabel,
+      const inventory = await this.tripInventory.holdSeat(tripId, seatId);
+      const hold = buildSeatHold({
+        holdId,
         userId,
-        amountCents: inventory.priceCents,
         idempotencyKey,
-        createdAt: new Date().toISOString(),
-        expiresAt: expiresAt.toISOString(),
-        origin: inventory.origin,
-        destination: inventory.destination,
-      };
+        expiresAt,
+        inventory,
+      });
 
       const created = await this.holds.tryCreate(hold);
       if (created.status === 'idempotent') {
         if (created.hold.seatId !== seatId) {
-          await this.tripReleaseSeat(tripId, seatId);
+          await this.tripInventory.releaseSeat(tripId, seatId);
         }
         holdsCreated.inc({
           result: 'idempotent',
           ...holdRoute(created.hold),
         });
-        return this.toHoldResponse(created.hold, true);
+        return this.holdResponse(created.hold, true);
       }
       if (created.status === 'seat_taken') {
-        await this.tripReleaseSeat(tripId, seatId);
+        await this.tripInventory.releaseSeat(tripId, seatId);
         throw new ConflictException(
           'Seat is not available for this trip (already held or sold)',
         );
       }
 
-      const event: SeatReservedEvent = {
-        eventId: randomUUID(),
-        type: RoutingKeys.SeatReserved,
-        occurredAt: new Date().toISOString(),
-        reservationId: created.hold.id,
-        tripId: created.hold.tripId,
-        seatId: created.hold.seatId,
-        seatLabel: created.hold.seatLabel,
-        userId: created.hold.userId,
-        expiresAt: created.hold.expiresAt,
-        amountCents: created.hold.amountCents,
-      };
-      await this.outbox.enqueueStandalone(
-        RoutingKeys.SeatReserved,
-        event,
-      );
+      const event = toSeatReservedEvent(created.hold);
+      await this.outbox.enqueueStandalone(RoutingKeys.SeatReserved, event);
 
       holdsCreated.inc({
         result: 'created',
@@ -248,7 +172,7 @@ export class ReservationsService implements OnModuleInit {
         expiresAt: created.hold.expiresAt,
       });
 
-      return this.toHoldResponse(created.hold, false);
+      return this.holdResponse(created.hold, false);
     } catch (error) {
       holdsCreated.inc({
         result: 'error',
@@ -267,9 +191,9 @@ export class ReservationsService implements OnModuleInit {
         include: { passenger: true },
       });
       if (pending?.status === ReservationStatus.PENDING_PAYMENT) {
-        return this.toDbResponse(pending, hold.seatLabel, false);
+        return this.dbResponse(pending, hold.seatLabel, false);
       }
-      return this.toHoldResponse(hold, false);
+      return this.holdResponse(hold, false);
     }
 
     const reservation = await this.prisma.reservation.findUnique({
@@ -280,17 +204,14 @@ export class ReservationsService implements OnModuleInit {
       throw new NotFoundException(`reservation ${id} not found`);
     }
 
-    const seatLabel = await this.fetchSeatLabel(
+    const seatLabel = await this.tripInventory.fetchSeatLabel(
       reservation.tripId,
       reservation.seatId,
     );
-    return this.toDbResponse(reservation, seatLabel, false);
+    return this.dbResponse(reservation, seatLabel, false);
   }
 
-  /**
-   * Primeira gravação no Postgres: pagamento foi iniciado.
-   * Hold continua no Redis até CONFIRMED ou FAILED.
-   */
+  /** Primeira gravação no Postgres: pagamento iniciado. */
   async beginPayment(input: BeginPaymentInput) {
     const id = input.reservationId?.trim();
     if (!id) {
@@ -305,14 +226,14 @@ export class ReservationsService implements OnModuleInit {
       include: { passenger: true },
     });
     if (existing?.status === ReservationStatus.CONFIRMED) {
-      return this.toDbResponse(existing, null, true);
+      return this.dbResponse(existing, null, true);
     }
     if (existing?.status === ReservationStatus.PENDING_PAYMENT) {
       const hold = await this.holds.getById(id);
       if (hold) {
         await this.holds.refresh(hold, PAYMENT_HOLD_TTL_SECONDS);
       }
-      return this.toDbResponse(existing, hold?.seatLabel ?? null, true);
+      return this.dbResponse(existing, hold?.seatLabel ?? null, true);
     }
 
     const hold = await this.holds.getById(id);
@@ -365,7 +286,7 @@ export class ReservationsService implements OnModuleInit {
           amountCents: created.amountCents,
         });
 
-        return this.toDbResponse(created, refreshed.seatLabel, false);
+        return this.dbResponse(created, refreshed.seatLabel, false);
       } catch (error) {
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -376,7 +297,7 @@ export class ReservationsService implements OnModuleInit {
             include: { passenger: true },
           });
           if (again) {
-            return this.toDbResponse(again, refreshed.seatLabel, true);
+            return this.dbResponse(again, refreshed.seatLabel, true);
           }
           continue;
         }
@@ -419,11 +340,11 @@ export class ReservationsService implements OnModuleInit {
       throw new NotFoundException('order not found');
     }
 
-    const seatLabel = await this.fetchSeatLabel(
+    const seatLabel = await this.tripInventory.fetchSeatLabel(
       reservation.tripId,
       reservation.seatId,
     );
-    return this.toDbResponse(reservation, seatLabel, false);
+    return this.dbResponse(reservation, seatLabel, false);
   }
 
   async onPaymentApproved(event: PaymentApprovedEvent) {
@@ -460,19 +381,13 @@ export class ReservationsService implements OnModuleInit {
 
     try {
       let didConfirm = false;
-      const confirmed: SeatConfirmedEvent = {
-        eventId: randomUUID(),
-        type: RoutingKeys.SeatConfirmed,
-        occurredAt: new Date().toISOString(),
+      const confirmed = toSeatConfirmedEvent({
         reservationId: event.reservationId,
         tripId,
         seatId,
         seatLabel: hold?.seatLabel,
-        orderCode: reservation.orderCode,
-        passengerName: reservation.passenger.name,
-        passengerEmail: reservation.passenger.email,
-        amountCents: reservation.amountCents,
-      };
+        reservation,
+      });
 
       await this.prisma.$transaction(async (tx) => {
         const updated = await tx.reservation.updateMany({
@@ -581,7 +496,10 @@ export class ReservationsService implements OnModuleInit {
       (reservation.status === ReservationStatus.PENDING_PAYMENT ||
         reservation.status === ReservationStatus.CANCELLED)
     ) {
-      await this.tripReleaseSeat(reservation.tripId, reservation.seatId);
+      await this.tripInventory.releaseSeat(
+        reservation.tripId,
+        reservation.seatId,
+      );
     }
 
     this.log.warn('checkout_compensated', {
@@ -659,7 +577,10 @@ export class ReservationsService implements OnModuleInit {
           where: { id: reservation.id },
           data: { status: ReservationStatus.EXPIRED },
         });
-        await this.tripReleaseSeat(reservation.tripId, reservation.seatId);
+        await this.tripInventory.releaseSeat(
+          reservation.tripId,
+          reservation.seatId,
+        );
         this.log.warn('healed_expired_pending_without_hold', {
           reservationId: reservation.id,
           seatId: reservation.seatId,
@@ -672,20 +593,10 @@ export class ReservationsService implements OnModuleInit {
     }
   }
 
-  /** Libera Redis + outbox seat.released (Trip aplica AVAILABLE). */
   private async releaseHold(hold: SeatHold, reason: 'EXPIRED' | 'CANCELLED') {
     await this.holds.delete(hold);
 
-    const released: SeatReleasedEvent = {
-      eventId: randomUUID(),
-      type: RoutingKeys.SeatReleased,
-      occurredAt: new Date().toISOString(),
-      reservationId: hold.id,
-      tripId: hold.tripId,
-      seatId: hold.seatId,
-      reason,
-    };
-
+    const released = toSeatReleasedEvent(hold, reason);
     await this.outbox.enqueueStandalone(RoutingKeys.SeatReleased, released);
 
     const route = holdRoute(hold);
@@ -701,130 +612,20 @@ export class ReservationsService implements OnModuleInit {
     });
   }
 
-  private async tripHoldSeat(
-    tripId: string,
-    seatId: string,
-  ): Promise<HoldSeatResult> {
-    try {
-      return await firstValueFrom(
-        this.tripClient
-          .send<HoldSeatResult>(TripTopics.HoldSeat, { tripId, seatId })
-          .pipe(timeout(8_000)),
-      );
-    } catch (error) {
-      if (error instanceof TimeoutError) {
-        throw new RequestTimeoutException('trip-service timeout on hold-seat');
-      }
-      const msg = rpcErrorMessage(error);
-      if (/not available|Conflict|409/i.test(msg)) {
-        throw new ConflictException(
-          'Seat is not available for this trip (already held or sold)',
-        );
-      }
-      if (/not found|404/i.test(msg)) {
-        throw new NotFoundException(`trip ${tripId} not found`);
-      }
-      throw error;
-    }
+  private holdResponse(hold: SeatHold, idempotentReplay: boolean) {
+    return toHoldResponse(hold, this.holds.holdMinutes, idempotentReplay);
   }
 
-  private async tripReleaseSeat(tripId: string, seatId: string) {
-    try {
-      await firstValueFrom(
-        this.tripClient
-          .send(TripTopics.ReleaseSeat, { tripId, seatId })
-          .pipe(timeout(8_000)),
-      );
-    } catch (error) {
-      this.log.error('trip_release_seat_failed', {
-        tripId,
-        seatId,
-        error: rpcErrorMessage(error),
-      });
-    }
-  }
-
-  private async fetchSeatLabel(
-    tripId: string,
-    seatId: string,
-  ): Promise<string | null> {
-    try {
-      const seat = await firstValueFrom(
-        this.tripClient
-          .send<SeatLabelResult>(TripTopics.GetSeat, { tripId, seatId })
-          .pipe(timeout(5_000)),
-      );
-      return seat.seatLabel;
-    } catch {
-      return null;
-    }
-  }
-
-  private toHoldResponse(hold: SeatHold, idempotentReplay: boolean) {
-    return {
-      id: hold.id,
-      tripId: hold.tripId,
-      seatId: hold.seatId,
-      seatLabel: hold.seatLabel,
-      userId: hold.userId,
-      amountCents: hold.amountCents,
-      status: 'RESERVED' as const,
-      expiresAt: hold.expiresAt,
-      createdAt: hold.createdAt,
-      holdMinutes: this.holds.holdMinutes,
-      idempotencyKey: hold.idempotencyKey,
-      idempotentReplay,
-    };
-  }
-
-  private toDbResponse(
-    reservation: {
-      id: string;
-      tripId: string;
-      seatId: string;
-      userId: string;
-      amountCents: number;
-      status: ReservationStatus;
-      expiresAt: Date;
-      createdAt?: Date;
-      idempotencyKey: string;
-      orderCode: string;
-      paymentMethod: PaymentMethod;
-      passenger: {
-        id: string;
-        name: string;
-        email: string;
-        document: string;
-        phone: string;
-        birthDate: string;
-      };
-    },
+  private dbResponse(
+    reservation: Parameters<typeof toDbResponse>[0],
     seatLabel: string | null,
     idempotentReplay: boolean,
   ) {
-    return {
-      id: reservation.id,
-      tripId: reservation.tripId,
-      seatId: reservation.seatId,
+    return toDbResponse(
+      reservation,
       seatLabel,
-      userId: reservation.userId,
-      amountCents: reservation.amountCents,
-      status: reservation.status,
-      expiresAt: reservation.expiresAt.toISOString(),
-      createdAt: reservation.createdAt?.toISOString(),
-      holdMinutes: this.holds.holdMinutes,
-      idempotencyKey: reservation.idempotencyKey,
+      this.holds.holdMinutes,
       idempotentReplay,
-      orderCode: reservation.orderCode,
-      paymentMethod: reservation.paymentMethod,
-      passenger: {
-        id: reservation.passenger.id,
-        name: reservation.passenger.name,
-        email: reservation.passenger.email,
-        document: reservation.passenger.document,
-        phone: reservation.passenger.phone,
-        birthDate: reservation.passenger.birthDate,
-      },
-    };
+    );
   }
 }

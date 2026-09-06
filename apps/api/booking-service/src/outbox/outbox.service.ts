@@ -17,12 +17,7 @@ export class OutboxService {
   ) {}
 
   /** Grava evento na mesma transação do estado de domínio. */
-  async enqueue(
-    tx: Tx,
-    routingKey: string,
-    payload: object,
-    id?: string,
-  ) {
+  async enqueue(tx: Tx, routingKey: string, payload: object, id?: string) {
     await tx.outboxEvent.create({
       data: {
         id: id ?? randomUUID(),

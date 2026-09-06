@@ -118,12 +118,7 @@ export class HoldStoreService implements OnModuleDestroy {
     const pipeline = this.redis.pipeline();
     pipeline.set(KEY.hold(next.id), JSON.stringify(next), 'EX', ttlSeconds);
     pipeline.set(KEY.idem(next.idempotencyKey), next.id, 'EX', ttlSeconds);
-    pipeline.set(
-      KEY.seat(next.tripId, next.seatId),
-      next.id,
-      'EX',
-      ttlSeconds,
-    );
+    pipeline.set(KEY.seat(next.tripId, next.seatId), next.id, 'EX', ttlSeconds);
     pipeline.zadd(KEY.expiring, expiresAtMs, next.id);
     await pipeline.exec();
     return next;

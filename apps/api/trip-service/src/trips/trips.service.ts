@@ -15,9 +15,14 @@ import type {
 } from '@repo/common';
 import { createLogger } from '@repo/observability';
 import { PrismaService } from '../prisma/prisma.service';
-
-/** HELD sem renovação (hold Redis ~1–2 min + folga). */
-const STALE_HELD_MS = 15 * 60 * 1000;
+import {
+  toHoldSeatResult,
+  toSeatLabelResult,
+  toSeatSummary,
+  toSeatView,
+  toTripSummary,
+} from './trips.mappers';
+import { STALE_HELD_MS } from './trips.types';
 
 @Injectable()
 export class TripsService {
@@ -55,16 +60,7 @@ export class TripsService {
     return {
       query: { origin, destination, date },
       count: trips.length,
-      trips: trips.map((trip) => ({
-        id: trip.id,
-        origin: trip.origin,
-        destination: trip.destination,
-        departureAt: trip.departureAt.toISOString(),
-        arrivalAt: trip.arrivalAt.toISOString(),
-        priceCents: trip.priceCents,
-        companyName: trip.companyName,
-        availableSeats: trip.availableSeats,
-      })),
+      trips: trips.map(toTripSummary),
     };
   }
 
@@ -85,31 +81,10 @@ export class TripsService {
       throw new NotFoundException(`trip ${id} not found`);
     }
 
-    const summary = {
-      available: trip.seats.filter((s) => s.status === SeatStatus.AVAILABLE)
-        .length,
-      held: trip.seats.filter((s) => s.status === SeatStatus.HELD).length,
-      sold: trip.seats.filter((s) => s.status === SeatStatus.SOLD).length,
-    };
-
     return {
-      trip: {
-        id: trip.id,
-        origin: trip.origin,
-        destination: trip.destination,
-        departureAt: trip.departureAt.toISOString(),
-        arrivalAt: trip.arrivalAt.toISOString(),
-        priceCents: trip.priceCents,
-        companyName: trip.companyName,
-      },
-      summary,
-      seats: trip.seats.map((seat) => ({
-        id: seat.id,
-        label: seat.label,
-        row: seat.row,
-        column: seat.column,
-        status: seat.status,
-      })),
+      trip: toTripSummary(trip),
+      summary: toSeatSummary(trip.seats),
+      seats: trip.seats.map(toSeatView),
     };
   }
 
@@ -127,12 +102,7 @@ export class TripsService {
       throw new NotFoundException(`seat ${seatId} not found on trip ${tripId}`);
     }
 
-    return {
-      tripId,
-      seatId: seat.id,
-      seatLabel: seat.label,
-      status: seat.status,
-    };
+    return toSeatLabelResult({ tripId, seat });
   }
 
   /** Único writer síncrono do hold: AVAILABLE → HELD + decrementa availableSeats. */
@@ -176,14 +146,14 @@ export class TripsService {
     }
 
     this.log.info('seat_held', { tripId, seatId, seatLabel: result.label });
-    return {
+    return toHoldSeatResult({
       tripId,
       seatId: result.id,
       seatLabel: result.label,
       priceCents: trip.priceCents,
       origin: trip.origin,
       destination: trip.destination,
-    };
+    });
   }
 
   async confirmSeat(input: SeatMutationInput) {

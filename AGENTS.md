@@ -22,47 +22,47 @@ packages/
   common/   # contratos + topics/queues (@repo/common)
   events/   # payloads de domínio (@repo/events)
 
-Diagramas Mermaid: [docs/architecture.md](docs/architecture.md)  
+Diagramas Mermaid: [docs/architecture.md](docs/architecture.md)
 Visão / casos de uso / escolhas: [docs/project.md](docs/project.md)
 ```
 
 ## Comunicação
 
-| Caminho | Como |
-|---------|------|
-| Web → Gateway | HTTP |
-| Gateway → serviços | RabbitMQ RPC (`ClientProxy.send` / `@MessagePattern`) |
-| Payment → Booking (begin payment) | RabbitMQ RPC |
-| Booking/Payment → Trip / Notification / Booking | Topic `bus.topic` + 1 fila por consumidor |
-| Notification → Mailpit | SMTP `:1025` |
+| Caminho                                         | Como                                                  |
+| ----------------------------------------------- | ----------------------------------------------------- |
+| Web → Gateway                                   | HTTP                                                  |
+| Gateway → serviços                              | RabbitMQ RPC (`ClientProxy.send` / `@MessagePattern`) |
+| Payment → Booking (begin payment)               | RabbitMQ RPC                                          |
+| Booking/Payment → Trip / Notification / Booking | Topic `bus.topic` + 1 fila por consumidor             |
+| Notification → Mailpit                          | SMTP `:1025`                                          |
 
 Filas RPC: `trip_queue`, `booking_queue`, `payment_queue`.  
 Filas domínio (topic): `trip_domain`, `booking_domain`, `notification_queue`.
 
 ## Observabilidade (mínimo)
 
-| Peça | Uso |
-|------|-----|
-| OpenTelemetry | traces, metrics, logs OTLP |
-| Logs JSON | `service`, `level`, `timestamp`, `traceId` |
-| RED | `http_requests_total`, `http_request_errors_total`, `http_request_duration_seconds` |
-| `/metrics` | scrape Prometheus local por serviço |
-| Grafana | http://localhost:3005 |
-| Mailpit | http://localhost:8025 |
+| Peça          | Uso                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------- |
+| OpenTelemetry | traces, metrics, logs OTLP                                                          |
+| Logs JSON     | `service`, `level`, `timestamp`, `traceId`                                          |
+| RED           | `http_requests_total`, `http_request_errors_total`, `http_request_duration_seconds` |
+| `/metrics`    | scrape Prometheus local por serviço                                                 |
+| Grafana       | http://localhost:3005                                                               |
+| Mailpit       | http://localhost:8025                                                               |
 
 ## Portas
 
-| App | Porta | Path |
-|-----|------:|------|
-| web | 3000 | `apps/web` |
-| api-gateway | 3001 | `apps/api/api-gateway` |
-| trip | 3002 | `apps/api/trip-service` |
-| booking | 3003 | `apps/api/booking-service` |
-| payment | 3004 | `apps/api/payment-service` |
-| Grafana LGTM | 3005 | — |
-| notification | 3006 | `apps/api/notification-service` |
-| Mailpit UI | 8025 | — |
-| Mailpit SMTP | 1025 | — |
+| App          | Porta | Path                                     |
+| ------------ | ----: | ---------------------------------------- |
+| web          |  3000 | `apps/web`                               |
+| api-gateway  |  3001 | `apps/api/api-gateway` · Swagger `/docs` |
+| trip         |  3002 | `apps/api/trip-service`                  |
+| booking      |  3003 | `apps/api/booking-service`               |
+| payment      |  3004 | `apps/api/payment-service`               |
+| Grafana LGTM |  3005 | —                                        |
+| notification |  3006 | `apps/api/notification-service`          |
+| Mailpit UI   |  8025 | —                                        |
+| Mailpit SMTP |  1025 | —                                        |
 
 ```sh
 pnpm docker:up && pnpm db:setup && pnpm dev

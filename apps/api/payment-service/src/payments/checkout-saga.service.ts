@@ -1,27 +1,27 @@
+import { Injectable } from '@nestjs/common';
 import {
-  Inject,
-  Injectable,
-  NotFoundException,
-  RequestTimeoutException,
-} from '@nestjs/common';
-import { ClientProxy } from '@nestjs/microservices';
-import { CheckoutSagaStatus, Payment, PaymentStatus, Prisma } from '@bus/payment-prisma';
+  CheckoutSagaStatus,
+  Payment,
+  PaymentStatus,
+  Prisma,
+} from '@bus/payment-prisma';
 import {
-  AppService,
-  BookingTopics,
+  ReservationStatus,
   type CreatePaymentInput,
   type Reservation,
 } from '@repo/common';
-import {
-  PaymentApprovedEvent,
-  PaymentFailedEvent,
-  RoutingKeys,
-} from '@repo/events';
+import { RoutingKeys } from '@repo/events';
 import { createCounter, createLogger } from '@repo/observability';
-import { randomUUID } from 'crypto';
-import { firstValueFrom, TimeoutError, timeout } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { OutboxService } from '../outbox/outbox.service';
+import { BookingClient } from './booking.client';
+import {
+  newTransactionId,
+  toPaymentApprovedEvent,
+  toPaymentFailedEvent,
+  toPaymentResponse,
+} from './payments.mappers';
+import { assertSagaInput, errorMessage } from './payments.validators';
 
 const paymentsTotal = createCounter(
   'payment_processed_total',
@@ -44,27 +44,22 @@ export class CheckoutSagaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly outbox: OutboxService,
-    @Inject(AppService.Booking) private readonly bookingClient: ClientProxy,
+    private readonly booking: BookingClient,
   ) {}
 
   async run(input: CreatePaymentInput) {
-    const reservationId = input.reservationId?.trim();
-    const idempotencyKey = input.idempotencyKey?.trim();
-    const amountCents = Number(input.amountCents);
+    assertSagaInput(input);
 
-    if (!reservationId || !idempotencyKey) {
-      throw new Error('reservationId and idempotencyKey required');
-    }
-    if (!input.passenger || !input.paymentMethod) {
-      throw new Error('passenger and paymentMethod required');
-    }
+    const reservationId = input.reservationId!.trim();
+    const idempotencyKey = input.idempotencyKey!.trim();
+    const amountCents = Number(input.amountCents);
 
     const existingPayment = await this.prisma.payment.findUnique({
       where: { idempotencyKey },
     });
     if (existingPayment) {
       paymentsTotal.inc({ result: 'idempotent' });
-      return this.toResponse(existingPayment, true);
+      return toPaymentResponse(existingPayment, true);
     }
 
     const activePayment = await this.prisma.payment.findFirst({
@@ -76,7 +71,7 @@ export class CheckoutSagaService {
     });
     if (activePayment) {
       paymentsTotal.inc({ result: 'idempotent' });
-      return this.toResponse(activePayment, true);
+      return toPaymentResponse(activePayment, true);
     }
 
     const saga = await this.prisma.checkoutSaga.upsert({
@@ -98,14 +93,13 @@ export class CheckoutSagaService {
       });
       if (pay) {
         paymentsTotal.inc({ result: 'idempotent' });
-        return this.toResponse(pay, true);
+        return toPaymentResponse(pay, true);
       }
     }
 
-    // --- Step 1: abrir janela de pagamento no Booking ---
     let reservation: Reservation;
     try {
-      reservation = await this.beginPayment(input, reservationId);
+      reservation = await this.booking.beginPayment(input, reservationId);
       await this.setSaga(saga.id, {
         status: CheckoutSagaStatus.PAYMENT_WINDOW_OPEN,
       });
@@ -117,7 +111,7 @@ export class CheckoutSagaService {
       throw error;
     }
 
-    if (reservation.status === 'CONFIRMED') {
+    if (reservation.status === ReservationStatus.Confirmed) {
       const approved = await this.prisma.payment.findFirst({
         where: { reservationId, status: PaymentStatus.APPROVED },
       });
@@ -127,11 +121,10 @@ export class CheckoutSagaService {
           paymentId: approved.id,
         });
         paymentsTotal.inc({ result: 'idempotent' });
-        return this.toResponse(approved, true);
+        return toPaymentResponse(approved, true);
       }
     }
 
-    // --- Step 2: cobrar ---
     let payment: Payment;
     try {
       payment = await this.createPaymentRow({
@@ -146,6 +139,19 @@ export class CheckoutSagaService {
 
     await this.setSaga(saga.id, { paymentId: payment.id });
 
+    if (input.asyncCharge) {
+      await this.setSaga(saga.id, {
+        status: CheckoutSagaStatus.WAITING_WEBHOOK,
+      });
+      paymentsTotal.inc({ result: 'pending_webhook' });
+      this.log.info('saga_waiting_webhook', {
+        sagaId: saga.id,
+        reservationId,
+        paymentId: payment.id,
+      });
+      return toPaymentResponse(payment, false);
+    }
+
     const approved = !input.forceFail;
     await new Promise((r) => setTimeout(r, 150));
 
@@ -153,11 +159,8 @@ export class CheckoutSagaService {
 
     try {
       if (approved) {
-        const transactionId = `txn_${randomUUID().slice(0, 8)}`;
-        const event: PaymentApprovedEvent = {
-          eventId: randomUUID(),
-          type: RoutingKeys.PaymentApproved,
-          occurredAt: new Date().toISOString(),
+        const transactionId = newTransactionId();
+        const event = toPaymentApprovedEvent({
           paymentId,
           reservationId,
           amountCents: payment.amountCents,
@@ -166,7 +169,7 @@ export class CheckoutSagaService {
           passengerName: reservation.passenger?.name ?? undefined,
           passengerEmail: reservation.passenger?.email ?? undefined,
           seatLabel: reservation.seatLabel ?? undefined,
-        };
+        });
 
         payment = await this.prisma.$transaction(async (tx) => {
           const updated = await tx.payment.update({
@@ -195,14 +198,11 @@ export class CheckoutSagaService {
           paymentId: payment.id,
         });
       } else {
-        const event: PaymentFailedEvent = {
-          eventId: randomUUID(),
-          type: RoutingKeys.PaymentFailed,
-          occurredAt: new Date().toISOString(),
+        const event = toPaymentFailedEvent({
           paymentId,
           reservationId,
           reason: 'gateway_declined',
-        };
+        });
 
         payment = await this.prisma.$transaction(async (tx) => {
           const updated = await tx.payment.update({
@@ -245,43 +245,16 @@ export class CheckoutSagaService {
       throw error;
     }
 
-    return this.toResponse(payment, false);
+    return toPaymentResponse(payment, false);
   }
 
-  private async beginPayment(
-    input: CreatePaymentInput,
+  /** Compensação disparada por webhook PSP (FAILED). */
+  async compensateFromWebhook(
+    sagaId: string,
     reservationId: string,
-  ): Promise<Reservation> {
-    try {
-      const reservation = await firstValueFrom(
-        this.bookingClient
-          .send<Reservation>(BookingTopics.BeginPayment, {
-            reservationId,
-            passenger: input.passenger,
-            paymentMethod: input.paymentMethod,
-          })
-          .pipe(timeout(10_000)),
-      );
-
-      if (
-        reservation.status !== 'PENDING_PAYMENT' &&
-        reservation.status !== 'CONFIRMED'
-      ) {
-        throw new Error(
-          `reservation is ${reservation.status}, expected PENDING_PAYMENT`,
-        );
-      }
-      if (new Date(reservation.expiresAt).getTime() < Date.now()) {
-        throw new Error('reservation already expired');
-      }
-      return reservation;
-    } catch (error) {
-      if (error instanceof TimeoutError) {
-        throw new RequestTimeoutException('booking-service timeout');
-      }
-      if (error instanceof RequestTimeoutException) throw error;
-      throw new NotFoundException(`reservation ${reservationId} not found`);
-    }
+    reason: string,
+  ) {
+    await this.compensate(sagaId, reservationId, reason);
   }
 
   private async createPaymentRow(data: {
@@ -323,14 +296,7 @@ export class CheckoutSagaService {
     });
 
     try {
-      await firstValueFrom(
-        this.bookingClient
-          .send(BookingTopics.CompensateCheckout, {
-            reservationId,
-            reason,
-          })
-          .pipe(timeout(10_000)),
-      );
+      await this.booking.compensateCheckout(reservationId, reason);
       await this.setSaga(sagaId, {
         status: CheckoutSagaStatus.COMPENSATED,
         failureReason: reason,
@@ -363,34 +329,4 @@ export class CheckoutSagaService {
       data,
     });
   }
-
-  private toResponse(
-    payment: {
-      id: string;
-      reservationId: string;
-      amountCents: number;
-      status: PaymentStatus;
-      transactionId: string | null;
-      idempotencyKey: string;
-      failureReason: string | null;
-      createdAt: Date;
-    },
-    idempotentReplay: boolean,
-  ) {
-    return {
-      id: payment.id,
-      reservationId: payment.reservationId,
-      amountCents: payment.amountCents,
-      status: payment.status,
-      transactionId: payment.transactionId,
-      idempotencyKey: payment.idempotencyKey,
-      failureReason: payment.failureReason,
-      createdAt: payment.createdAt.toISOString(),
-      idempotentReplay,
-    };
-  }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

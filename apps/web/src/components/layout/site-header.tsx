@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { Bus } from "lucide-react";
+import Link from 'next/link';
+import { Bus } from 'lucide-react';
 
 export function SiteHeader() {
   return (

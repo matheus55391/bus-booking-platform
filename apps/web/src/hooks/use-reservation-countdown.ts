@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { getReservation } from "@/api";
-import type { Reservation } from "@/types";
+import { useEffect, useState } from 'react';
+import { getReservation } from '@/api';
+import type { Reservation } from '@/types';
 
 export function useReservationCountdown(
   reservation: Reservation | null,
@@ -18,8 +18,8 @@ export function useReservationCountdown(
   useEffect(() => {
     if (
       !reservation ||
-      (reservation.status !== "RESERVED" &&
-        reservation.status !== "PENDING_PAYMENT") ||
+      (reservation.status !== 'RESERVED' &&
+        reservation.status !== 'PENDING_PAYMENT') ||
       !onRefresh
     ) {
       return;
@@ -38,7 +38,7 @@ export function useReservationCountdown(
 
   const remainingLabel = `${Math.floor(remainingMs / 60000)}:${String(
     Math.floor((remainingMs % 60000) / 1000),
-  ).padStart(2, "0")}`;
+  ).padStart(2, '0')}`;
 
   return { remainingMs, remainingLabel };
 }

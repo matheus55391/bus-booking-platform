@@ -1,4 +1,4 @@
-export type SeatStatus = "AVAILABLE" | "HELD" | "SOLD";
+export type SeatStatus = 'AVAILABLE' | 'HELD' | 'SOLD';
 
 export type Seat = {
   id: string;
@@ -32,7 +32,7 @@ export type SearchResponse = {
 };
 
 export type SeatsResponse = {
-  trip: Omit<Trip, "availableSeats">;
+  trip: Omit<Trip, 'availableSeats'>;
   summary: { available: number; held: number; sold: number };
   seats: Seat[];
 };

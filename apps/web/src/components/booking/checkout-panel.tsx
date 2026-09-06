@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import type { ReactNode } from "react";
-import { zodResolver } from "@hookform/resolvers/zod";
+import type { ReactNode } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
   CalendarDays,
   CreditCard,
@@ -10,24 +10,31 @@ import {
   Mail,
   Phone,
   User,
-} from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { formatDateTime, formatMoney } from "@/lib/format";
+} from 'lucide-react';
+import Link from 'next/link';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { formatDateTime, formatMoney } from '@/lib/format';
 import {
+  digitsOnly,
   formatCardExpiry,
   formatCardNumber,
   formatCep,
   formatCpf,
   formatPhone,
-} from "@/lib/masks";
-import { passengerSchema, type PassengerFormInput } from "@/schemas";
-import type { Payment, Reservation } from "@/types";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+} from '@/lib/masks';
+import { passengerSchema, type PassengerFormInput } from '@/schemas';
+import {
+  PaymentMethod,
+  PaymentStatus,
+  ReservationStatus,
+  type Payment,
+  type Reservation,
+} from '@/types';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 type Props = {
   reservation: Reservation;
@@ -46,13 +53,13 @@ export function CheckoutPanel({
   paying,
   onPay,
 }: Props) {
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [cardCpf, setCardCpf] = useState("");
-  const [cardCep, setCardCep] = useState("");
-  const [cardPhone, setCardPhone] = useState("");
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardName, setCardName] = useState('');
+  const [cardCpf, setCardCpf] = useState('');
+  const [cardCep, setCardCep] = useState('');
+  const [cardPhone, setCardPhone] = useState('');
 
   const {
     register,
@@ -63,35 +70,37 @@ export function CheckoutPanel({
   } = useForm<PassengerFormInput>({
     resolver: zodResolver(passengerSchema),
     defaultValues: {
-      name: "",
-      birthDate: "",
-      document: "",
-      email: "",
-      emailConfirm: "",
-      phone: "",
-      paymentMethod: "PIX",
+      name: '',
+      birthDate: '',
+      document: '',
+      email: '',
+      emailConfirm: '',
+      phone: '',
+      paymentMethod: PaymentMethod.Pix,
     },
   });
 
-  const paymentMethod = watch("paymentMethod");
+  const paymentMethod = watch('paymentMethod');
   const holdActive =
-    (reservation.status === "RESERVED" ||
-      reservation.status === "PENDING_PAYMENT") &&
+    (reservation.status === ReservationStatus.Reserved ||
+      reservation.status === ReservationStatus.PendingPayment) &&
     remainingMs > 0;
-  const confirmed = reservation.status === "CONFIRMED";
+  const confirmed = reservation.status === ReservationStatus.Confirmed;
 
   return (
     <section className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-secondary/50 px-4 py-3">
         <div>
-          <p className="text-sm font-semibold">Assento {reservation.seatLabel}</p>
+          <p className="text-sm font-semibold">
+            Assento {reservation.seatLabel}
+          </p>
           <p className="text-sm text-muted-foreground">
             {formatMoney(reservation.amountCents)} · finalize antes do fim do
             tempo
           </p>
         </div>
-        {(reservation.status === "RESERVED" ||
-          reservation.status === "PENDING_PAYMENT") && (
+        {(reservation.status === ReservationStatus.Reserved ||
+          reservation.status === ReservationStatus.PendingPayment) && (
           <p className="font-mono text-lg font-bold tabular-nums text-foreground">
             {remainingLabel}
           </p>
@@ -104,7 +113,7 @@ export function CheckoutPanel({
             Passagem confirmada
           </h2>
           <p className="text-sm text-foreground">
-            Enviamos o ticket para{" "}
+            Enviamos o ticket para{' '}
             <strong>{reservation.passenger?.email}</strong>.
           </p>
           <dl className="grid gap-3 sm:grid-cols-2">
@@ -117,14 +126,16 @@ export function CheckoutPanel({
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase text-muted-foreground">Assento</dt>
+              <dt className="text-xs uppercase text-muted-foreground">
+                Assento
+              </dt>
               <dd className="mt-1 font-semibold">{reservation.seatLabel}</dd>
             </div>
           </dl>
           <Link
             href="/pedido"
             className={buttonVariants({
-              className: "w-fit rounded-full font-bold",
+              className: 'w-fit rounded-full font-bold',
             })}
           >
             Consultar pedido
@@ -132,18 +143,18 @@ export function CheckoutPanel({
         </div>
       ) : null}
 
-      {payment && payment.status === "FAILED" ? (
+      {payment && payment.status === PaymentStatus.Failed ? (
         <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           Pagamento não aprovado. Escolha outro assento ou tente de novo.
         </p>
       ) : null}
 
-      {reservation.status === "EXPIRED" ||
-      reservation.status === "CANCELLED" ? (
+      {reservation.status === ReservationStatus.Expired ||
+      reservation.status === ReservationStatus.Cancelled ? (
         <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {reservation.status === "CANCELLED"
-            ? "Pagamento falhou. Escolha outro assento."
-            : "Reserva expirou. Escolha outro assento."}
+          {reservation.status === ReservationStatus.Cancelled
+            ? 'Pagamento falhou. Escolha outro assento.'
+            : 'Reserva expirou. Escolha outro assento.'}
         </p>
       ) : null}
 
@@ -172,7 +183,7 @@ export function CheckoutPanel({
                   <Input
                     className="h-11 rounded-full pl-10"
                     autoComplete="name"
-                    {...register("name")}
+                    {...register('name')}
                   />
                 </div>
               </Field>
@@ -186,7 +197,7 @@ export function CheckoutPanel({
                   <Input
                     type="date"
                     className="h-11 rounded-full pl-10"
-                    {...register("birthDate")}
+                    {...register('birthDate')}
                   />
                 </div>
               </Field>
@@ -198,7 +209,7 @@ export function CheckoutPanel({
                     className="h-11 rounded-full pl-10"
                     inputMode="numeric"
                     placeholder="000.000.000-00"
-                    {...register("document", {
+                    {...register('document', {
                       onChange: (e) => {
                         e.target.value = formatCpf(e.target.value);
                       },
@@ -221,7 +232,7 @@ export function CheckoutPanel({
                     type="email"
                     className="h-11 rounded-full pl-10"
                     autoComplete="email"
-                    {...register("email")}
+                    {...register('email')}
                   />
                 </div>
               </Field>
@@ -235,7 +246,7 @@ export function CheckoutPanel({
                     type="email"
                     className="h-11 rounded-full pl-10"
                     autoComplete="email"
-                    {...register("emailConfirm")}
+                    {...register('emailConfirm')}
                   />
                 </div>
               </Field>
@@ -250,7 +261,7 @@ export function CheckoutPanel({
                     className="h-11 rounded-full pl-10"
                     inputMode="tel"
                     placeholder="(00) 00000-0000"
-                    {...register("phone", {
+                    {...register('phone', {
                       onChange: (e) => {
                         e.target.value = formatPhone(e.target.value);
                       },
@@ -273,16 +284,18 @@ export function CheckoutPanel({
 
             <div className="flex flex-wrap gap-2">
               <MethodTab
-                active={paymentMethod === "PIX"}
+                active={paymentMethod === PaymentMethod.Pix}
                 onClick={() =>
-                  setValue("paymentMethod", "PIX", { shouldValidate: true })
+                  setValue('paymentMethod', PaymentMethod.Pix, {
+                    shouldValidate: true,
+                  })
                 }
                 label="Pix"
               />
               <MethodTab
-                active={paymentMethod === "CREDIT_CARD"}
+                active={paymentMethod === PaymentMethod.CreditCard}
                 onClick={() =>
-                  setValue("paymentMethod", "CREDIT_CARD", {
+                  setValue('paymentMethod', PaymentMethod.CreditCard, {
                     shouldValidate: true,
                   })
                 }
@@ -295,7 +308,7 @@ export function CheckoutPanel({
               </p>
             ) : null}
 
-            {paymentMethod === "PIX" ? (
+            {paymentMethod === PaymentMethod.Pix ? (
               <p className="mt-4 rounded-xl bg-secondary/60 px-4 py-3 text-sm text-muted-foreground">
                 Pagamento instantâneo (simulado). Ao confirmar, aprovamos o Pix
                 na hora e enviamos o ticket por e-mail.
@@ -341,7 +354,7 @@ export function CheckoutPanel({
                       value={cardCvv}
                       onChange={(e) =>
                         setCardCvv(
-                          e.target.value.replace(/\D/g, "").slice(0, 4),
+                          e.target.value.replace(/\D/g, '').slice(0, 4),
                         )
                       }
                     />
@@ -396,7 +409,7 @@ export function CheckoutPanel({
               className="mt-4 w-full rounded-full font-bold"
               disabled={paying || remainingMs <= 0}
             >
-              {paying ? "Processando pagamento…" : "Pagar agora"}
+              {paying ? 'Processando pagamento…' : 'Pagar agora'}
             </Button>
           </div>
         </form>
@@ -404,8 +417,8 @@ export function CheckoutPanel({
 
       {!holdActive &&
       !confirmed &&
-      reservation.status !== "EXPIRED" &&
-      reservation.status !== "CANCELLED" ? (
+      reservation.status !== 'EXPIRED' &&
+      reservation.status !== 'CANCELLED' ? (
         <p className="text-sm text-muted-foreground">
           Status: {reservation.status}
           {reservation.expiresAt
@@ -429,7 +442,7 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
+    <div className={cn('flex flex-col gap-1.5', className)}>
       <Label className="text-sm font-medium">{label}</Label>
       {children}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -451,10 +464,10 @@ function MethodTab({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-full border px-4 py-2 text-sm font-semibold transition-colors",
+        'rounded-full border px-4 py-2 text-sm font-semibold transition-colors',
         active
-          ? "border-primary bg-primary/20 text-foreground"
-          : "border-border bg-background text-muted-foreground hover:border-primary/40",
+          ? 'border-primary bg-primary/20 text-foreground'
+          : 'border-border bg-background text-muted-foreground hover:border-primary/40',
       )}
     >
       {label}

@@ -1,10 +1,10 @@
-import Link from "next/link";
-import { ArrowRight, Clock3 } from "lucide-react";
-import { formatDuration, formatMoney, formatTime } from "@/lib/format";
-import type { SearchResponse } from "@/types";
-import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import Link from 'next/link';
+import { ArrowRight, Clock3 } from 'lucide-react';
+import { formatDuration, formatMoney, formatTime } from '@/lib/format';
+import type { SearchResponse } from '@/types';
+import { Badge } from '@/components/ui/badge';
+import { buttonVariants } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 type Props = {
   result: SearchResponse;
@@ -16,11 +16,11 @@ export function TripList({ result }: Props) {
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm text-muted-foreground">
-            {result.query.origin} → {result.query.destination} ·{" "}
+            {result.query.origin} → {result.query.destination} ·{' '}
             {result.query.date}
           </p>
           <h2 className="font-[family-name:var(--font-heading)] text-2xl font-bold tracking-tight">
-            {result.count} {result.count === 1 ? "resultado" : "resultados"}
+            {result.count} {result.count === 1 ? 'resultado' : 'resultados'}
           </h2>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -93,7 +93,9 @@ export function TripList({ result }: Props) {
 
                   <div className="flex items-center justify-between gap-4 border-t pt-4 sm:flex-col sm:items-end sm:justify-center sm:border-t-0 sm:border-l sm:pl-6 sm:pt-0">
                     <div className="text-left sm:text-right">
-                      <p className="text-xs text-muted-foreground">a partir de</p>
+                      <p className="text-xs text-muted-foreground">
+                        a partir de
+                      </p>
                       <p className="font-[family-name:var(--font-heading)] text-3xl font-bold tracking-tight">
                         {formatMoney(trip.priceCents)}
                       </p>
@@ -102,7 +104,7 @@ export function TripList({ result }: Props) {
                       href={`/trips/${trip.id}`}
                       prefetch={false}
                       className={buttonVariants({
-                        className: "rounded-full px-6 font-bold",
+                        className: 'rounded-full px-6 font-bold',
                       })}
                     >
                       Selecionar
@@ -130,8 +132,8 @@ function SortChip({
     <span
       className={
         active
-          ? "rounded-full border border-primary bg-primary/15 px-3 py-1 text-sm font-semibold text-foreground"
-          : "rounded-full border border-border bg-card px-3 py-1 text-sm text-muted-foreground"
+          ? 'rounded-full border border-primary bg-primary/15 px-3 py-1 text-sm font-semibold text-foreground'
+          : 'rounded-full border border-border bg-card px-3 py-1 text-sm text-muted-foreground'
       }
     >
       {children}

@@ -18,6 +18,7 @@ enum PaymentStatus {
 enum CheckoutSagaStatus {
   STARTED
   PAYMENT_WINDOW_OPEN
+  WAITING_WEBHOOK
   CHARGED
   COMPLETED
   COMPENSATING
@@ -67,4 +68,18 @@ model OutboxEvent {
 
   @@index([publishedAt, createdAt])
   @@index([poisonedAt, createdAt])
+  @@map("PaymentOutboxEvent")
+}
+
+/// Dedupe de webhooks do PSP (providerEventId único).
+model PspWebhookEvent {
+  providerEventId String   @id
+  provider        String   @default("mock")
+  paymentId       String
+  status          String
+  payload         Json
+  processedAt     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([paymentId])
 }

@@ -1,19 +1,19 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useCallback, useState } from "react";
+import Link from 'next/link';
+import { useCallback, useState } from 'react';
 import {
   useCreatePayment,
   useCreateReservation,
   useReservationCountdown,
   useTripSeats,
-} from "@/hooks";
-import type { PassengerFormInput } from "@/schemas";
-import type { Payment, Reservation, SeatsResponse } from "@/types";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { CheckoutPanel } from "./checkout-panel";
-import { SeatMap } from "./seat-map";
+} from '@/hooks';
+import type { PassengerFormInput } from '@/schemas';
+import type { Payment, Reservation, SeatsResponse } from '@/types';
+import { buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { CheckoutPanel } from './checkout-panel';
+import { SeatMap } from './seat-map';
 
 type Props = {
   tripId: string;
@@ -77,8 +77,8 @@ export function BookingClient({ tripId, initialSeats }: Props) {
         <Link
           href="/"
           className={buttonVariants({
-            variant: "link",
-            className: "h-auto w-fit px-0",
+            variant: 'link',
+            className: 'h-auto w-fit px-0',
           })}
         >
           ← Voltar à busca
@@ -104,16 +104,25 @@ export function BookingClient({ tripId, initialSeats }: Props) {
             minuto.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            {seatsData.summary.available} livres · {seatsData.summary.held}{" "}
+            {seatsData.summary.available} livres · {seatsData.summary.held}{' '}
             reservados · {seatsData.summary.sold} ocupados
           </p>
         </div>
 
         <div className="flex flex-wrap gap-3 text-sm">
-          <LegendSwatch className="bg-primary/25 border-primary/50" label="Livre" />
-          <LegendSwatch className="bg-amber-100 border-amber-400" label="Reservado" />
+          <LegendSwatch
+            className="bg-primary/25 border-primary/50"
+            label="Livre"
+          />
+          <LegendSwatch
+            className="bg-amber-100 border-amber-400"
+            label="Reservado"
+          />
           <LegendSwatch className="bg-muted border-border" label="Ocupado" />
-          <LegendSwatch className="bg-foreground border-foreground" label="Seu assento" />
+          <LegendSwatch
+            className="bg-foreground border-foreground"
+            label="Seu assento"
+          />
         </div>
 
         <SeatMap
@@ -152,10 +161,7 @@ function LegendSwatch({
 }) {
   return (
     <span className="inline-flex items-center gap-2">
-      <span
-        className={cn("size-3 rounded-sm border", className)}
-        aria-hidden
-      />
+      <span className={cn('size-3 rounded-sm border', className)} aria-hidden />
       {label}
     </span>
   );

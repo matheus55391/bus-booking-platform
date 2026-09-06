@@ -1,18 +1,18 @@
 /** Domínio: topic exchange (routing key seleciona filas). */
-export const EXCHANGE = "bus.topic";
-export const EXCHANGE_TYPE = "topic" as const;
+export const EXCHANGE = 'bus.topic';
+export const EXCHANGE_TYPE = 'topic' as const;
 
 /** Dead-letter: mensagens com nack(requeue=false) caem aqui. */
-export const DLX_EXCHANGE = "bus.dlx";
-export const DLX_EXCHANGE_TYPE = "fanout" as const;
+export const DLX_EXCHANGE = 'bus.dlx';
+export const DLX_EXCHANGE_TYPE = 'fanout' as const;
 
 /** Routing keys = binding keys no topic `bus.topic`. */
 export const RoutingKeys = {
-  SeatReserved: "seat.reserved",
-  SeatConfirmed: "seat.confirmed",
-  SeatReleased: "seat.released",
-  PaymentApproved: "payment.approved",
-  PaymentFailed: "payment.failed",
+  SeatReserved: 'seat.reserved',
+  SeatConfirmed: 'seat.confirmed',
+  SeatReleased: 'seat.released',
+  PaymentApproved: 'payment.approved',
+  PaymentFailed: 'payment.failed',
 } as const;
 
 export type SeatReservedEvent = {
@@ -49,7 +49,7 @@ export type SeatReleasedEvent = {
   reservationId: string;
   tripId: string;
   seatId: string;
-  reason: "EXPIRED" | "CANCELLED";
+  reason: 'EXPIRED' | 'CANCELLED';
 };
 
 export type PaymentApprovedEvent = {

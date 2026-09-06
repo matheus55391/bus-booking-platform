@@ -1,0 +1,9 @@
+node_modules
+.pnpm-store
+dist
+.next
+coverage
+pnpm-lock.yaml
+**/src/generated/**
+**/*.prisma
+apps/api/**/prisma/migrations/**

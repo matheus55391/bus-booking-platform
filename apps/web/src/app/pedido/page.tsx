@@ -1,18 +1,18 @@
-"use client";
+'use client';
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Hash, Mail, Ticket } from "lucide-react";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { lookupOrder } from "@/api";
-import { formatMoney } from "@/lib/format";
-import { digitsOnly, formatCpf, formatOrderCode } from "@/lib/masks";
-import { orderLookupSchema, type OrderLookupInput } from "@/schemas";
-import type { Reservation } from "@/types";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Hash, Mail, Ticket } from 'lucide-react';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { lookupOrder } from '@/api';
+import { formatMoney } from '@/lib/format';
+import { digitsOnly, formatCpf, formatOrderCode } from '@/lib/masks';
+import { orderLookupSchema, type OrderLookupInput } from '@/schemas';
+import { PaymentMethod, type Reservation } from '@/types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 export default function PedidoPage() {
   const [result, setResult] = useState<Reservation | null>(null);
@@ -27,14 +27,14 @@ export default function PedidoPage() {
   } = useForm<OrderLookupInput>({
     resolver: zodResolver(orderLookupSchema),
     defaultValues: {
-      orderCode: "",
-      idType: "email",
-      email: "",
-      document: "",
+      orderCode: '',
+      idType: 'email',
+      email: '',
+      document: '',
     },
   });
 
-  const idType = watch("idType");
+  const idType = watch('idType');
 
   async function onSubmit(values: OrderLookupInput) {
     setError(null);
@@ -42,15 +42,15 @@ export default function PedidoPage() {
     try {
       const order = await lookupOrder({
         orderCode: values.orderCode,
-        email: values.idType === "email" ? values.email?.trim() : undefined,
+        email: values.idType === 'email' ? values.email?.trim() : undefined,
         document:
-          values.idType === "document"
-            ? digitsOnly(values.document ?? "")
+          values.idType === 'document'
+            ? digitsOnly(values.document ?? '')
             : undefined,
       });
       setResult(order);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Pedido não encontrado");
+      setError(err instanceof Error ? err.message : 'Pedido não encontrado');
     }
   }
 
@@ -77,7 +77,7 @@ export default function PedidoPage() {
               <Input
                 className="h-11 rounded-full pl-10 font-mono uppercase tracking-wide"
                 placeholder="ABC-1234"
-                {...register("orderCode", {
+                {...register('orderCode', {
                   onChange: (e) => {
                     e.target.value = formatOrderCode(e.target.value);
                   },
@@ -98,9 +98,9 @@ export default function PedidoPage() {
                 <input
                   type="radio"
                   value="email"
-                  checked={idType === "email"}
+                  checked={idType === 'email'}
                   onChange={() =>
-                    setValue("idType", "email", { shouldValidate: true })
+                    setValue('idType', 'email', { shouldValidate: true })
                   }
                   className="accent-primary"
                 />
@@ -110,9 +110,9 @@ export default function PedidoPage() {
                 <input
                   type="radio"
                   value="document"
-                  checked={idType === "document"}
+                  checked={idType === 'document'}
                   onChange={() =>
-                    setValue("idType", "document", { shouldValidate: true })
+                    setValue('idType', 'document', { shouldValidate: true })
                   }
                   className="accent-primary"
                 />
@@ -121,7 +121,7 @@ export default function PedidoPage() {
             </div>
           </fieldset>
 
-          {idType === "email" ? (
+          {idType === 'email' ? (
             <div className="flex flex-col gap-1.5">
               <Label>E-mail</Label>
               <div className="relative">
@@ -130,11 +130,13 @@ export default function PedidoPage() {
                   type="email"
                   className="h-11 rounded-full pl-10"
                   placeholder="nome@email.com"
-                  {...register("email")}
+                  {...register('email')}
                 />
               </div>
               {errors.email ? (
-                <p className="text-sm text-destructive">{errors.email.message}</p>
+                <p className="text-sm text-destructive">
+                  {errors.email.message}
+                </p>
               ) : null}
             </div>
           ) : (
@@ -146,7 +148,7 @@ export default function PedidoPage() {
                   className="h-11 rounded-full pl-10"
                   inputMode="numeric"
                   placeholder="000.000.000-00"
-                  {...register("document", {
+                  {...register('document', {
                     onChange: (e) => {
                       e.target.value = formatCpf(e.target.value);
                     },
@@ -176,7 +178,7 @@ export default function PedidoPage() {
             className="mt-2 w-full rounded-full font-bold"
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Consultando…" : "Consultar pedido"}
+            {isSubmitting ? 'Consultando…' : 'Consultar pedido'}
           </Button>
         </form>
       </div>
@@ -184,7 +186,7 @@ export default function PedidoPage() {
       {result ? (
         <div
           className={cn(
-            "rounded-2xl border border-border bg-card p-6 shadow-sm",
+            'rounded-2xl border border-border bg-card p-6 shadow-sm',
           )}
         >
           <h2 className="font-[family-name:var(--font-heading)] text-xl font-bold">
@@ -192,21 +194,25 @@ export default function PedidoPage() {
           </h2>
           <dl className="mt-4 grid gap-3 sm:grid-cols-2">
             <Item label="Status" value={result.status} />
-            <Item label="Assento" value={result.seatLabel ?? "—"} />
+            <Item label="Assento" value={result.seatLabel ?? '—'} />
             <Item label="Valor" value={formatMoney(result.amountCents)} />
-            <Item label="Passageiro" value={result.passenger?.name ?? "—"} />
-            <Item label="E-mail" value={result.passenger?.email ?? "—"} />
+            <Item label="Passageiro" value={result.passenger?.name ?? '—'} />
+            <Item label="E-mail" value={result.passenger?.email ?? '—'} />
             <Item
               label="Pagamento"
               value={
-                result.paymentMethod === "CREDIT_CARD"
-                  ? "Cartão"
-                  : result.paymentMethod === "PIX"
-                    ? "Pix"
-                    : (result.paymentMethod ?? "—")
+                result.paymentMethod === PaymentMethod.CreditCard
+                  ? 'Cartão'
+                  : result.paymentMethod === PaymentMethod.Pix
+                    ? 'Pix'
+                    : (result.paymentMethod ?? '—')
               }
             />
-            <Item label="Viagem" value={result.tripId} className="sm:col-span-2" />
+            <Item
+              label="Viagem"
+              value={result.tripId}
+              className="sm:col-span-2"
+            />
           </dl>
         </div>
       ) : null}

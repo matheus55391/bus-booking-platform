@@ -1,20 +1,14 @@
-"use client";
+'use client';
 
-import { Building2, Bus, MapPin } from "lucide-react";
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { Building2, Bus, MapPin } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import {
   formatLocationLabel,
   searchLocations,
   type Location,
-} from "@/data/locations";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+} from '@/data/locations';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 type Props = {
   id?: string;
@@ -50,8 +44,8 @@ export function CityCombobox({
         setOpen(false);
       }
     }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
   }, []);
 
   function select(location: Location) {
@@ -61,27 +55,27 @@ export function CityCombobox({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (!open && (event.key === "ArrowDown" || event.key === "Enter")) {
+    if (!open && (event.key === 'ArrowDown' || event.key === 'Enter')) {
       setOpen(true);
       return;
     }
 
-    if (event.key === "Escape") {
+    if (event.key === 'Escape') {
       setOpen(false);
       return;
     }
 
-    if (event.key === "ArrowDown") {
+    if (event.key === 'ArrowDown') {
       event.preventDefault();
       setActiveIndex((i) => Math.min(i + 1, Math.max(results.length - 1, 0)));
     }
 
-    if (event.key === "ArrowUp") {
+    if (event.key === 'ArrowUp') {
       event.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, 0));
     }
 
-    if (event.key === "Enter" && open && results[activeIndex]) {
+    if (event.key === 'Enter' && open && results[activeIndex]) {
       event.preventDefault();
       select(results[activeIndex]);
     }
@@ -115,8 +109,8 @@ export function CityCombobox({
         }}
         onKeyDown={onKeyDown}
         className={cn(
-          "h-10 border-0 bg-transparent px-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 aria-invalid:border-0 aria-invalid:ring-0",
-          invalid && "placeholder:text-destructive",
+          'h-10 border-0 bg-transparent px-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 aria-invalid:border-0 aria-invalid:ring-0',
+          invalid && 'placeholder:text-destructive',
         )}
       />
 
@@ -138,10 +132,10 @@ export function CityCombobox({
                   <button
                     type="button"
                     className={cn(
-                      "flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors",
+                      'flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors',
                       active
-                        ? "bg-primary/15 text-foreground"
-                        : "hover:bg-secondary",
+                        ? 'bg-primary/15 text-foreground'
+                        : 'hover:bg-secondary',
                     )}
                     onMouseEnter={() => setActiveIndex(index)}
                     onMouseDown={(event) => {
@@ -164,12 +158,12 @@ export function CityCombobox({
   );
 }
 
-function LocationIcon({ type }: { type: Location["type"] }) {
-  const className = "size-4 shrink-0 text-primary";
-  if (type === "city_all") {
+function LocationIcon({ type }: { type: Location['type'] }) {
+  const className = 'size-4 shrink-0 text-primary';
+  if (type === 'city_all') {
     return <Building2 className={className} aria-hidden />;
   }
-  if (type === "station") {
+  if (type === 'station') {
     return <Bus className={className} aria-hidden />;
   }
   return <MapPin className={className} aria-hidden />;

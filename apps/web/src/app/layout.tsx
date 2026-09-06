@@ -1,23 +1,23 @@
-import type { Metadata } from "next";
-import { Outfit, Source_Sans_3 } from "next/font/google";
-import { QueryProvider } from "@/context";
-import { SiteHeader } from "@/components/layout/site-header";
-import { cn } from "@/lib/utils";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { Outfit, Source_Sans_3 } from 'next/font/google';
+import { QueryProvider } from '@/context';
+import { SiteHeader } from '@/components/layout/site-header';
+import { cn } from '@/lib/utils';
+import './globals.css';
 
 const heading = Outfit({
-  subsets: ["latin"],
-  variable: "--font-heading",
+  subsets: ['latin'],
+  variable: '--font-heading',
 });
 
 const sans = Source_Sans_3({
-  subsets: ["latin"],
-  variable: "--font-sans",
+  subsets: ['latin'],
+  variable: '--font-sans',
 });
 
 export const metadata: Metadata = {
-  title: "Rodoviária — passagens de ônibus",
-  description: "Busque e reserve passagens rodoviárias",
+  title: 'Rodoviária — passagens de ônibus',
+  description: 'Busque e reserve passagens rodoviárias',
 };
 
 export default function RootLayout({

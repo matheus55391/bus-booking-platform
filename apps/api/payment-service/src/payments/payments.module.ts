@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { AppService, ServiceQueues } from '@repo/common';
 import { OutboxModule } from '../outbox/outbox.module';
+import { BookingClient } from './booking.client';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { CheckoutSagaService } from './checkout-saga.service';
+import { PspWebhookService } from './psp-webhook.service';
 
 const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
 
@@ -24,6 +26,11 @@ const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
     ]),
   ],
   controllers: [PaymentsController],
-  providers: [PaymentsService, CheckoutSagaService],
+  providers: [
+    PaymentsService,
+    CheckoutSagaService,
+    PspWebhookService,
+    BookingClient,
+  ],
 })
 export class PaymentsModule {}

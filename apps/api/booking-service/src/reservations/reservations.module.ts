@@ -3,6 +3,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { AppService, ServiceQueues } from '@repo/common';
 import { ReservationsController } from './reservations.controller';
 import { ReservationsService } from './reservations.service';
+import { TripInventoryClient } from './trip-inventory.client';
 
 const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
 
@@ -21,6 +22,6 @@ const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
     ]),
   ],
   controllers: [ReservationsController],
-  providers: [ReservationsService],
+  providers: [ReservationsService, TripInventoryClient],
 })
 export class ReservationsModule {}

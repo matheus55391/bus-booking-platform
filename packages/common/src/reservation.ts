@@ -1,11 +1,15 @@
-export type ReservationStatus =
-  | "RESERVED" // hold Redis (ainda não em Postgres)
-  | "PENDING_PAYMENT" // pagamento iniciado (Postgres)
-  | "CONFIRMED"
-  | "EXPIRED"
-  | "CANCELLED";
+export enum ReservationStatus {
+  Reserved = 'RESERVED',
+  PendingPayment = 'PENDING_PAYMENT',
+  Confirmed = 'CONFIRMED',
+  Expired = 'EXPIRED',
+  Cancelled = 'CANCELLED',
+}
 
-export type PaymentMethod = "PIX" | "CREDIT_CARD";
+export enum PaymentMethod {
+  Pix = 'PIX',
+  CreditCard = 'CREDIT_CARD',
+}
 
 /** Dados do passageiro no request de pagamento / beginPayment. */
 export type PassengerData = {

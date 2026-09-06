@@ -10,13 +10,13 @@ Diagramas vivos: [`architecture.md`](./architecture.md) · mapa curto: [`AGENTS.
 
 Monorepo (pnpm + Turbo) com:
 
-| Camada | Conteúdo |
-|--------|----------|
-| **Web** | Next.js — busca, mapa de assentos, checkout guest, consulta de pedido |
-| **API Gateway** | BFF HTTP → RabbitMQ RPC (sem dono de domínio) |
-| **Serviços** | Trip · Booking · Payment · Notification |
-| **Contratos** | `@repo/common`, `@repo/events`, `@repo/messaging`, `@repo/observability` |
-| **Deps locais** | Postgres, Redis, RabbitMQ, Mailpit, Grafana LGTM (`docker-compose.yml`) |
+| Camada          | Conteúdo                                                                 |
+| --------------- | ------------------------------------------------------------------------ |
+| **Web**         | Next.js — busca, mapa de assentos, checkout guest, consulta de pedido    |
+| **API Gateway** | BFF HTTP → RabbitMQ RPC (sem dono de domínio)                            |
+| **Serviços**    | Trip · Booking · Payment · Notification                                  |
+| **Contratos**   | `@repo/common`, `@repo/events`, `@repo/messaging`, `@repo/observability` |
+| **Deps locais** | Postgres, Redis, RabbitMQ, Mailpit, Grafana LGTM (`docker-compose.yml`)  |
 
 **Modelo de negócio (guest):** não há conta de usuário. Passageiro informa dados no pagamento; recebe e-mail do ticket; consulta o pedido com `orderCode` + e-mail ou CPF.
 
@@ -62,7 +62,7 @@ Monorepo (pnpm + Turbo) com:
    - Trip marca assento `SOLD`; Notification manda e-mail (Mailpit).
 5. Se charge falha depois do begin → RPC `booking.compensate-checkout` (CANCELLED + libera hold/assento).
 
-🧠 *"Saga de checkout = orquestrador no Payment; se a cobrança falha depois do beginPayment, compensação libera o assento."*
+🧠 _"Saga de checkout = orquestrador no Payment; se a cobrança falha depois do beginPayment, compensação libera o assento."_
 
 ### UC5 — Consultar pedido
 
@@ -79,13 +79,13 @@ Monorepo (pnpm + Turbo) com:
 
 ## 3. Atores e donos de dado
 
-| Dado | Dono | Por quê |
-|------|------|---------|
-| Trip / Seat | **Trip** | Inventário único; evita dois writers no mesmo assento |
-| Hold (Redis) | **Booking** | Soft-lock barato com TTL; sem poluir PG com abandono |
-| Reservation / Passenger / Outbox (booking) | **Booking** | Pedido e passageiro nascem no checkout |
-| Payment / CheckoutSaga / Outbox (payment) | **Payment** | Cobrança + orquestração da saga |
-| E-mail | **Notification** | Side-effect; não altera domínio |
+| Dado                                       | Dono             | Por quê                                               |
+| ------------------------------------------ | ---------------- | ----------------------------------------------------- |
+| Trip / Seat                                | **Trip**         | Inventário único; evita dois writers no mesmo assento |
+| Hold (Redis)                               | **Booking**      | Soft-lock barato com TTL; sem poluir PG com abandono  |
+| Reservation / Passenger / Outbox (booking) | **Booking**      | Pedido e passageiro nascem no checkout                |
+| Payment / CheckoutSaga / Outbox (payment)  | **Payment**      | Cobrança + orquestração da saga                       |
+| E-mail                                     | **Notification** | Side-effect; não altera domínio                       |
 
 Gateway **não** é dono de nada: só HTTP, validação de idempotency key, throttle e RPC.
 
@@ -134,11 +134,11 @@ Gateway **não** é dono de nada: só HTTP, validação de idempotency key, thro
 
 ### 4.6 RabbitMQ: RPC + topic
 
-| Uso | Mecanismo |
-|-----|-----------|
-| Sync (busca, hold, pay, begin) | RPC nas filas `*_queue` (Nest `ClientProxy`) |
-| Async (seat.* / payment.*) | Exchange **topic** `bus.topic` + 1 fila por consumidor |
-| Falha no consumer | `nack(requeue=false)` → DLX `bus.dlx` → `{queue}.dlq` |
+| Uso                            | Mecanismo                                              |
+| ------------------------------ | ------------------------------------------------------ |
+| Sync (busca, hold, pay, begin) | RPC nas filas `*_queue` (Nest `ClientProxy`)           |
+| Async (seat.* / payment.*)     | Exchange **topic** `bus.topic` + 1 fila por consumidor |
+| Falha no consumer              | `nack(requeue=false)` → DLX `bus.dlx` → `{queue}.dlq`  |
 
 **Por quê topic (não fanout):** routing key (`seat.confirmed`, `payment.approved`) seleciona quem recebe — modelo mental correto para eventos tipados.
 
@@ -149,8 +149,9 @@ Gateway **não** é dono de nada: só HTTP, validação de idempotency key, thro
 - Hold: header `Idempotency-Key` + Redis NX (+ unique no PG quando vira Reservation).
 - Pagamento: key estável `pay-{reservationId}` + unique + no máx. 1 PENDING/APPROVED por reserva.
 - Confirm: `updateMany` só se ainda `PENDING_PAYMENT`.
+- **Webhook PSP:** `PspWebhookEvent.providerEventId` + transição só de `PENDING`.
 
-**Por quê:** retry de rede / double-click / reload não podem cobrar ou confirmar duas vezes.
+**Por quê:** retry de rede / double-click / callback do PSP não podem cobrar ou confirmar duas vezes. E-mail duplicado no lab é aceitável.
 
 ### 4.8 Observabilidade mínima (RED + OTEL)
 
@@ -166,14 +167,14 @@ Gateway **não** é dono de nada: só HTTP, validação de idempotency key, thro
 
 ### 4.10 Stack de app
 
-| Peça | Escolha | Motivo no lab |
-|------|---------|----------------|
-| Monorepo | pnpm workspaces + Turbo | Contratos versionados junto com serviços |
-| Backend | NestJS | Microservices + RPC + DI familiares no mercado BR |
-| ORM | Prisma (schema por serviço) | Migrações claras; client gerado `@bus/*-prisma` |
-| Web | Next.js App Router | UI rápida para exercitar o funil |
-| Cache / hold | Redis | TTL nativo |
-| Broker | RabbitMQ | RPC + topic + DLQ num só lugar |
+| Peça         | Escolha                     | Motivo no lab                                     |
+| ------------ | --------------------------- | ------------------------------------------------- |
+| Monorepo     | pnpm workspaces + Turbo     | Contratos versionados junto com serviços          |
+| Backend      | NestJS                      | Microservices + RPC + DI familiares no mercado BR |
+| ORM          | Prisma (schema por serviço) | Migrações claras; client gerado `@bus/*-prisma`   |
+| Web          | Next.js App Router          | UI rápida para exercitar o funil                  |
+| Cache / hold | Redis                       | TTL nativo                                        |
+| Broker       | RabbitMQ                    | RPC + topic + DLQ num só lugar                    |
 
 ---
 
@@ -200,13 +201,13 @@ TTL estoura        → EXPIRED / libera hold
 
 ## 6. O que o lab aceita (e o que você deve verbalizar)
 
-| Aceitável aqui | Em produção você citaría |
-|----------------|---------------------------|
-| Postgres único | DB (ou schema) por serviço |
-| Relay outbox no mesmo processo | Worker / CDC + `SKIP LOCKED` |
-| Payment gateway mock | PSP real + webhooks |
-| E-mail sem dedupe | Idempotency key de notificação |
-| `availableSeats` eventual | Contador derivado ou read model forte |
+| Aceitável aqui                 | Em produção você citaría              |
+| ------------------------------ | ------------------------------------- |
+| Postgres único                 | DB (ou schema) por serviço            |
+| Relay outbox no mesmo processo | Worker / CDC + `SKIP LOCKED`          |
+| Payment gateway mock           | PSP real + webhooks                   |
+| E-mail sem dedupe              | Idempotency key de notificação        |
+| `availableSeats` eventual      | Contador derivado ou read model forte |
 
 ---
 
@@ -216,13 +217,14 @@ TTL estoura        → EXPIRED / libera hold
 pnpm docker:up && pnpm db:setup && pnpm dev
 ```
 
-| URL | Uso |
-|-----|-----|
-| http://localhost:3000 | Web |
-| http://localhost:3001 | Gateway |
-| http://localhost:3005 | Grafana (traces / metrics / logs) |
-| http://localhost:8025 | Mailpit (tickets) |
-| http://localhost:15672 | RabbitMQ (bus/bus) |
+| URL                        | Uso                               |
+| -------------------------- | --------------------------------- |
+| http://localhost:3000      | Web                               |
+| http://localhost:3001      | Gateway                           |
+| http://localhost:3001/docs | Swagger / OpenAPI                 |
+| http://localhost:3005      | Grafana (traces / metrics / logs) |
+| http://localhost:8025      | Mailpit (tickets)                 |
+| http://localhost:15672     | RabbitMQ (bus/bus)                |
 
 Se filas domain forem criadas com args antigos (fanout/DLX), delete `trip_domain`, `booking_domain`, `notification_queue` na UI e reinicie os serviços.
 
@@ -236,4 +238,4 @@ Se filas domain forem criadas com args antigos (fanout/DLX), delete `trip_domain
 4. **Checkout multi-serviço:** saga no Payment + compensação.
 5. **Observabilidade:** sem ela você não prova que a saga funcionou.
 
-Frase-âncora: *“Saga de checkout = orquestrador no Payment; se a cobrança falha depois do beginPayment, compensação libera o assento.”*
+Frase-âncora: _“Saga de checkout = orquestrador no Payment; se a cobrança falha depois do beginPayment, compensação libera o assento.”_

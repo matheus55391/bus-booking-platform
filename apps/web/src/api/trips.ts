@@ -1,5 +1,5 @@
-import type { SearchResponse, SeatsResponse } from "@/types";
-import { apiUrl, parseApiError } from "./client";
+import type { SearchResponse, SeatsResponse } from '@/types';
+import { apiUrl, parseApiError } from './client';
 
 export async function searchTrips(input: {
   origin: string;
@@ -18,7 +18,7 @@ export async function searchTrips(input: {
 
 export async function getTripSeats(tripId: string): Promise<SeatsResponse> {
   const response = await fetch(apiUrl(`/trips/${tripId}/seats`), {
-    cache: "no-store",
+    cache: 'no-store',
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));

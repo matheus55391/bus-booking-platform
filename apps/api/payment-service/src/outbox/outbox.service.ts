@@ -16,12 +16,7 @@ export class OutboxService {
     private readonly relay: OutboxRelayService,
   ) {}
 
-  async enqueue(
-    tx: Tx,
-    routingKey: string,
-    payload: object,
-    id?: string,
-  ) {
+  async enqueue(tx: Tx, routingKey: string, payload: object, id?: string) {
     await tx.outboxEvent.create({
       data: {
         id: id ?? randomUUID(),

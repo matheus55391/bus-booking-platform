@@ -8,7 +8,7 @@ export {
   extractTraceContext,
   withExtractedContext,
   withSpan,
-} from "./telemetry";
+} from './telemetry';
 
 export {
   getMetricsRegistry,
@@ -17,6 +17,6 @@ export {
   recordHttpRed,
   recordMessagingPublished,
   recordMessagingConsumed,
-} from "./metrics";
+} from './metrics';
 
-export { ObservabilityInterceptor } from "./http.interceptor";
+export { ObservabilityInterceptor } from './http.interceptor';

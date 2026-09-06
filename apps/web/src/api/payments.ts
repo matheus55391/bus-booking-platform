@@ -1,5 +1,5 @@
-import type { PassengerData, Payment, PaymentMethod } from "@/types";
-import { apiUrl, parseApiError } from "./client";
+import type { PassengerData, Payment, PaymentMethod } from '@/types';
+import { apiUrl, parseApiError } from './client';
 
 export async function createPayment(input: {
   reservationId: string;
@@ -8,11 +8,11 @@ export async function createPayment(input: {
   passenger: PassengerData;
   paymentMethod: PaymentMethod;
 }): Promise<Payment> {
-  const response = await fetch(apiUrl("/payments"), {
-    method: "POST",
+  const response = await fetch(apiUrl('/payments'), {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": input.idempotencyKey,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': input.idempotencyKey,
     },
     body: JSON.stringify({
       reservationId: input.reservationId,

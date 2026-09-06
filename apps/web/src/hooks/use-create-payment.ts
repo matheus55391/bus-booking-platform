@@ -1,15 +1,16 @@
-"use client";
+'use client';
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createPayment, getReservation } from "@/api";
-import { digitsOnly } from "@/lib/masks";
-import type { PassengerFormInput } from "@/schemas";
-import type {
-  PassengerData,
-  Payment,
-  PaymentMethod,
-  Reservation,
-} from "@/types";
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { createPayment, getReservation } from '@/api';
+import { digitsOnly } from '@/lib/masks';
+import type { PassengerFormInput } from '@/schemas';
+import {
+  ReservationStatus,
+  type PassengerData,
+  type Payment,
+  type PaymentMethod,
+  type Reservation,
+} from '@/types';
 
 type PayInput = {
   reservation: Reservation;
@@ -62,7 +63,10 @@ export function useCreatePayment({
         await new Promise((r) => setTimeout(r, 400));
         current = await getReservation(reservation.id);
         onReservationUpdate?.(current);
-        if (current.status === "CONFIRMED" || current.status === "CANCELLED") {
+        if (
+          current.status === ReservationStatus.Confirmed ||
+          current.status === ReservationStatus.Cancelled
+        ) {
           break;
         }
       }
@@ -70,7 +74,7 @@ export function useCreatePayment({
       return { payment, reservation: current };
     },
     onSuccess: async ({ payment, reservation }) => {
-      await queryClient.invalidateQueries({ queryKey: ["trip-seats", tripId] });
+      await queryClient.invalidateQueries({ queryKey: ['trip-seats', tripId] });
       onSuccess?.(payment, reservation);
     },
     onError: (error: Error) => onError?.(error),

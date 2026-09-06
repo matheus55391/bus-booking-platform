@@ -17,10 +17,7 @@ type TripSeed = {
   heldLabels?: string[];
 };
 
-function buildSeats(opts: {
-  soldLabels: string[];
-  heldLabels: string[];
-}) {
+function buildSeats(opts: { soldLabels: string[]; heldLabels: string[] }) {
   const seats: {
     label: string;
     row: number;

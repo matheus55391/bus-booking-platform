@@ -9,6 +9,7 @@ import { OrdersController } from './controllers/orders.controller';
 import { PaymentsController } from './controllers/payments.controller';
 import { ReservationsController } from './controllers/reservations.controller';
 import { TripsController } from './controllers/trips.controller';
+import { WebhooksController } from './controllers/webhooks.controller';
 import { HealthService } from './services/health.service';
 import { RmqClientService } from './services/rmq-client.service';
 
@@ -60,6 +61,7 @@ const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
     ReservationsController,
     PaymentsController,
     OrdersController,
+    WebhooksController,
   ],
   providers: [HealthService, RmqClientService],
 })
