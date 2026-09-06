@@ -50,13 +50,17 @@ services:
       retries: 10
 
   # SMTP local para o notification-service (UI em :8025)
+  # Mailpit: multi-arch (arm64/amd64); substituto moderno do MailHog
   mailhog:
-    image: mailhog/mailhog:v1.0.1
+    image: axllent/mailpit:v1.27
     container_name: bus-mailhog
     restart: unless-stopped
     ports:
       - "1025:1025" # SMTP
       - "8025:8025" # Web UI
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
 
   # Observabilidade mínima (all-in-one):
   # - Grafana UI

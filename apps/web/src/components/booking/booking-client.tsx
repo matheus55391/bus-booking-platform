@@ -8,6 +8,7 @@ import {
   useReservationCountdown,
   useTripSeats,
 } from "@/hooks";
+import type { PassengerFormInput } from "@/schemas";
 import type { Payment, Reservation, SeatsResponse } from "@/types";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,6 @@ type Props = {
 export function BookingClient({ tripId, initialSeats }: Props) {
   const [reservation, setReservation] = useState<Reservation | null>(null);
   const [payment, setPayment] = useState<Payment | null>(null);
-  const [reserveKey, setReserveKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const seatsQuery = useTripSeats(tripId, initialSeats);
@@ -36,9 +36,8 @@ export function BookingClient({ tripId, initialSeats }: Props) {
 
   const reserveMutation = useCreateReservation({
     tripId,
-    onSuccess: (created, idempotencyKey) => {
+    onSuccess: (created) => {
       setReservation(created);
-      setReserveKey(idempotencyKey);
       setPayment(null);
       setError(null);
     },
@@ -48,14 +47,20 @@ export function BookingClient({ tripId, initialSeats }: Props) {
   const payMutation = useCreatePayment({
     tripId,
     onReservationUpdate: setReservation,
-    onSuccess: (created) => {
+    onSuccess: (created, nextReservation) => {
       setPayment(created);
+      setReservation(nextReservation);
       setError(null);
     },
     onError: (err) => setError(err.message),
   });
 
   const seatsData = seatsQuery.data ?? initialSeats;
+
+  function handlePay(form: PassengerFormInput) {
+    if (!reservation) return;
+    payMutation.mutate({ reservation, form });
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
@@ -130,9 +135,8 @@ export function BookingClient({ tripId, initialSeats }: Props) {
           payment={payment}
           remainingLabel={remainingLabel}
           remainingMs={remainingMs}
-          reserveKey={reserveKey}
           paying={payMutation.isPending}
-          onPay={() => payMutation.mutate(reservation)}
+          onPay={handlePay}
         />
       ) : null}
     </div>

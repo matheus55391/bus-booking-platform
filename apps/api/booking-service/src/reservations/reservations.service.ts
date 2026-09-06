@@ -6,8 +6,17 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Prisma, ReservationStatus } from '@bus/booking-prisma';
-import type { CreateReservationInput } from '@repo/common';
+import {
+  PaymentMethod,
+  Prisma,
+  ReservationStatus,
+} from '@bus/booking-prisma';
+import type {
+  BeginPaymentInput,
+  CreateReservationInput,
+  LookupReservationInput,
+  PassengerData,
+} from '@repo/common';
 import {
   PaymentApprovedEvent,
   PaymentFailedEvent,
@@ -17,7 +26,7 @@ import {
   SeatReservedEvent,
 } from '@repo/events';
 import { createLogger } from '@repo/observability';
-import { randomUUID } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import { RabbitMqService } from '../messaging/rabbitmq.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { HoldStoreService } from '../redis/hold-store.service';
@@ -35,6 +44,54 @@ import {
 
 /** Janela extra no Redis enquanto o pagamento roda. */
 const PAYMENT_HOLD_TTL_SECONDS = 120;
+
+const ORDER_CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+function digitsOnly(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+function generateOrderCode(): string {
+  let letters = '';
+  for (let i = 0; i < 3; i++) {
+    letters += ORDER_CODE_LETTERS[randomInt(ORDER_CODE_LETTERS.length)];
+  }
+  const nums = String(randomInt(1000, 10000));
+  return `${letters}-${nums}`;
+}
+
+function normalizePassenger(raw: PassengerData): PassengerData {
+  const name = raw.name?.trim() ?? '';
+  const email = raw.email?.trim().toLowerCase() ?? '';
+  const document = digitsOnly(raw.document ?? '');
+  const phone = digitsOnly(raw.phone ?? '');
+  const birthDate = raw.birthDate?.trim() ?? '';
+
+  if (name.length < 3) {
+    throw new BadRequestException('passenger.name is required');
+  }
+  if (!email.includes('@') || email.length < 5) {
+    throw new BadRequestException('passenger.email is invalid');
+  }
+  if (document.length !== 11) {
+    throw new BadRequestException('passenger.document must be a CPF (11 digits)');
+  }
+  if (phone.length < 10 || phone.length > 11) {
+    throw new BadRequestException('passenger.phone is invalid');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+    throw new BadRequestException('passenger.birthDate must be YYYY-MM-DD');
+  }
+
+  return { name, email, document, phone, birthDate };
+}
+
+function parsePaymentMethod(value: string): PaymentMethod {
+  if (value === 'PIX' || value === 'CREDIT_CARD') {
+    return value;
+  }
+  throw new BadRequestException('paymentMethod must be PIX or CREDIT_CARD');
+}
 
 @Injectable()
 export class ReservationsService implements OnModuleInit {
@@ -90,6 +147,7 @@ export class ReservationsService implements OnModuleInit {
 
     const existingPaid = await this.prisma.reservation.findUnique({
       where: { idempotencyKey },
+      include: { passenger: true },
     });
     if (existingPaid) {
       holdsCreated.inc({
@@ -148,7 +206,23 @@ export class ReservationsService implements OnModuleInit {
       };
 
       const created = await this.holds.tryCreate(hold);
-      if (!created) {
+      if (created.status === 'idempotent') {
+        // Corrida: já gravamos HELD neste request, mas a key já existia — desfaz PG.
+        if (created.hold.seatId !== seatId) {
+          await this.prisma.$executeRaw`
+            UPDATE "Seat"
+            SET status = 'AVAILABLE', "updatedAt" = NOW()
+            WHERE id = ${seatId}
+              AND status = 'HELD'
+          `;
+        }
+        holdsCreated.inc({
+          result: 'idempotent',
+          ...holdRoute(created.hold),
+        });
+        return this.toHoldResponse(created.hold, true);
+      }
+      if (created.status === 'seat_taken') {
         await this.prisma.$executeRaw`
           UPDATE "Seat"
           SET status = 'AVAILABLE', "updatedAt" = NOW()
@@ -171,30 +245,30 @@ export class ReservationsService implements OnModuleInit {
         eventId: randomUUID(),
         type: RoutingKeys.SeatReserved,
         occurredAt: new Date().toISOString(),
-        reservationId: created.id,
-        tripId: created.tripId,
-        seatId: created.seatId,
-        seatLabel: created.seatLabel,
-        userId: created.userId,
-        expiresAt: created.expiresAt,
-        amountCents: created.amountCents,
+        reservationId: created.hold.id,
+        tripId: created.hold.tripId,
+        seatId: created.hold.seatId,
+        seatLabel: created.hold.seatLabel,
+        userId: created.hold.userId,
+        expiresAt: created.hold.expiresAt,
+        amountCents: created.hold.amountCents,
       };
       await this.rabbit.publish(RoutingKeys.SeatReserved, event);
 
       holdsCreated.inc({ result: 'created', origin, destination });
       this.log.info('hold_created', {
-        holdId: created.id,
+        holdId: created.hold.id,
         tripId,
         seatId,
         seatLabel,
         userId,
         origin,
         destination,
-        amountCents: created.amountCents,
-        expiresAt: created.expiresAt,
+        amountCents: created.hold.amountCents,
+        expiresAt: created.hold.expiresAt,
       });
 
-      return this.toHoldResponse(created, false);
+      return this.toHoldResponse(created.hold, false);
     } catch (error) {
       holdsCreated.inc({
         result: 'error',
@@ -210,6 +284,7 @@ export class ReservationsService implements OnModuleInit {
     if (hold) {
       const pending = await this.prisma.reservation.findUnique({
         where: { id },
+        include: { passenger: true },
       });
       if (pending?.status === ReservationStatus.PENDING_PAYMENT) {
         return this.toDbResponse(pending, hold.seatLabel, false);
@@ -219,6 +294,7 @@ export class ReservationsService implements OnModuleInit {
 
     const reservation = await this.prisma.reservation.findUnique({
       where: { id },
+      include: { passenger: true },
     });
     if (!reservation) {
       throw new NotFoundException(`reservation ${id} not found`);
@@ -234,14 +310,21 @@ export class ReservationsService implements OnModuleInit {
   /**
    * Primeira gravação no Postgres: pagamento foi iniciado.
    * Hold continua no Redis até CONFIRMED ou FAILED.
+   * Cria Passenger + Reservation com método de pagamento.
    */
-  async beginPayment(reservationId: string) {
-    const id = reservationId?.trim();
+  async beginPayment(input: BeginPaymentInput) {
+    const id = input.reservationId?.trim();
     if (!id) {
       throw new BadRequestException('reservationId is required');
     }
 
-    const existing = await this.prisma.reservation.findUnique({ where: { id } });
+    const passengerData = normalizePassenger(input.passenger);
+    const paymentMethod = parsePaymentMethod(input.paymentMethod);
+
+    const existing = await this.prisma.reservation.findUnique({
+      where: { id },
+      include: { passenger: true },
+    });
     if (existing?.status === ReservationStatus.CONFIRMED) {
       return this.toDbResponse(existing, null, true);
     }
@@ -263,48 +346,113 @@ export class ReservationsService implements OnModuleInit {
 
     const refreshed = await this.holds.refresh(hold, PAYMENT_HOLD_TTL_SECONDS);
 
-    try {
-      const created = await this.prisma.reservation.create({
-        data: {
-          id: refreshed.id,
-          tripId: refreshed.tripId,
-          seatId: refreshed.seatId,
-          userId: refreshed.userId,
-          amountCents: refreshed.amountCents,
-          status: ReservationStatus.PENDING_PAYMENT,
-          expiresAt: new Date(refreshed.expiresAt),
-          idempotencyKey: refreshed.idempotencyKey,
-        },
-      });
-
-      this.log.info('payment_started', {
-        holdId: created.id,
-        tripId: created.tripId,
-        seatId: created.seatId,
-        ...holdRoute(refreshed),
-        amountCents: created.amountCents,
-      });
-
-      return this.toDbResponse(created, refreshed.seatLabel, false);
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        const again = await this.prisma.reservation.findUnique({
-          where: { id },
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const orderCode = generateOrderCode();
+      try {
+        const created = await this.prisma.reservation.create({
+          data: {
+            id: refreshed.id,
+            tripId: refreshed.tripId,
+            seatId: refreshed.seatId,
+            userId: passengerData.email,
+            amountCents: refreshed.amountCents,
+            status: ReservationStatus.PENDING_PAYMENT,
+            expiresAt: new Date(refreshed.expiresAt),
+            idempotencyKey: refreshed.idempotencyKey,
+            orderCode,
+            paymentMethod,
+            passenger: {
+              create: {
+                name: passengerData.name,
+                email: passengerData.email,
+                document: passengerData.document,
+                phone: passengerData.phone,
+                birthDate: passengerData.birthDate,
+              },
+            },
+          },
+          include: { passenger: true },
         });
-        if (again) {
-          return this.toDbResponse(again, refreshed.seatLabel, true);
+
+        this.log.info('payment_started', {
+          holdId: created.id,
+          orderCode: created.orderCode,
+          tripId: created.tripId,
+          seatId: created.seatId,
+          passengerId: created.passengerId,
+          passengerEmail: created.passenger.email,
+          paymentMethod: created.paymentMethod,
+          ...holdRoute(refreshed),
+          amountCents: created.amountCents,
+        });
+
+        return this.toDbResponse(created, refreshed.seatLabel, false);
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          const again = await this.prisma.reservation.findUnique({
+            where: { id },
+            include: { passenger: true },
+          });
+          if (again) {
+            return this.toDbResponse(again, refreshed.seatLabel, true);
+          }
+          // colisão de orderCode — tenta de novo
+          continue;
         }
+        throw error;
       }
-      throw error;
     }
+
+    throw new ConflictException('could not allocate orderCode');
+  }
+
+  /** Consulta guest: orderCode + e-mail ou CPF do Passenger. */
+  async lookup(input: LookupReservationInput) {
+    const orderCode = input.orderCode?.trim().toUpperCase();
+    const email = input.email?.trim().toLowerCase();
+    const document = input.document ? digitsOnly(input.document) : '';
+
+    if (!orderCode) {
+      throw new BadRequestException('orderCode is required');
+    }
+    if (!email && !document) {
+      throw new BadRequestException('email or document is required');
+    }
+
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { orderCode },
+      include: { passenger: true },
+    });
+
+    if (!reservation) {
+      throw new NotFoundException('order not found');
+    }
+
+    const emailOk = email
+      ? reservation.passenger.email.toLowerCase() === email
+      : false;
+    const documentOk = document
+      ? reservation.passenger.document === document
+      : false;
+
+    if (!emailOk && !documentOk) {
+      throw new NotFoundException('order not found');
+    }
+
+    const seats = await this.prisma.$queryRaw<{ label: string }[]>`
+      SELECT label FROM "Seat" WHERE id = ${reservation.seatId} LIMIT 1
+    `;
+
+    return this.toDbResponse(reservation, seats[0]?.label ?? null, false);
   }
 
   async onPaymentApproved(event: PaymentApprovedEvent) {
     const reservation = await this.prisma.reservation.findUnique({
       where: { id: event.reservationId },
+      include: { passenger: true },
     });
 
     if (reservation?.status === ReservationStatus.CONFIRMED) {
@@ -324,27 +472,29 @@ export class ReservationsService implements OnModuleInit {
     const seatId = reservation?.seatId ?? hold!.seatId;
     const tripId = reservation?.tripId ?? hold!.tripId;
 
+    if (!reservation) {
+      this.log.warn('payment_approved_without_reservation', {
+        reservationId: event.reservationId,
+        paymentId: event.paymentId,
+      });
+      if (hold) await this.holds.delete(hold);
+      return;
+    }
+
     try {
+      let didConfirm = false;
       await this.prisma.$transaction(async (tx) => {
-        if (reservation) {
-          await tx.reservation.update({
-            where: { id: event.reservationId },
-            data: { status: ReservationStatus.CONFIRMED },
-          });
-        } else if (hold) {
-          await tx.reservation.create({
-            data: {
-              id: hold.id,
-              tripId: hold.tripId,
-              seatId: hold.seatId,
-              userId: hold.userId,
-              amountCents: hold.amountCents,
-              status: ReservationStatus.CONFIRMED,
-              expiresAt: new Date(hold.expiresAt),
-              idempotencyKey: hold.idempotencyKey,
-            },
-          });
+        const updated = await tx.reservation.updateMany({
+          where: {
+            id: event.reservationId,
+            status: ReservationStatus.PENDING_PAYMENT,
+          },
+          data: { status: ReservationStatus.CONFIRMED },
+        });
+        if (updated.count === 0) {
+          return;
         }
+        didConfirm = true;
 
         await tx.$executeRaw`
           UPDATE "Seat"
@@ -353,6 +503,11 @@ export class ReservationsService implements OnModuleInit {
             AND status IN ('HELD', 'SOLD')
         `;
       });
+
+      if (!didConfirm) {
+        if (hold) await this.holds.delete(hold);
+        return;
+      }
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -375,6 +530,11 @@ export class ReservationsService implements OnModuleInit {
       reservationId: event.reservationId,
       tripId,
       seatId,
+      seatLabel: hold?.seatLabel,
+      orderCode: reservation.orderCode,
+      passengerName: reservation.passenger.name,
+      passengerEmail: reservation.passenger.email,
+      amountCents: reservation.amountCents,
     };
     await this.rabbit.publish(RoutingKeys.SeatConfirmed, confirmed);
 
@@ -382,12 +542,15 @@ export class ReservationsService implements OnModuleInit {
     holdsConfirmed.inc(route);
     this.log.info('hold_confirmed', {
       holdId: event.reservationId,
+      orderCode: reservation.orderCode,
       tripId,
       seatId,
       seatLabel: hold?.seatLabel,
-      userId: hold?.userId ?? reservation?.userId,
+      passengerId: reservation.passengerId,
+      passengerEmail: reservation.passenger.email,
+      userId: reservation.userId,
       ...route,
-      amountCents: hold?.amountCents ?? reservation?.amountCents,
+      amountCents: reservation.amountCents,
       paymentId: event.paymentId,
     });
   }
@@ -527,6 +690,16 @@ export class ReservationsService implements OnModuleInit {
       expiresAt: Date;
       createdAt?: Date;
       idempotencyKey: string;
+      orderCode: string;
+      paymentMethod: PaymentMethod;
+      passenger: {
+        id: string;
+        name: string;
+        email: string;
+        document: string;
+        phone: string;
+        birthDate: string;
+      };
     },
     seatLabel: string | null,
     idempotentReplay: boolean,
@@ -544,6 +717,16 @@ export class ReservationsService implements OnModuleInit {
       holdMinutes: this.holds.holdMinutes,
       idempotencyKey: reservation.idempotencyKey,
       idempotentReplay,
+      orderCode: reservation.orderCode,
+      paymentMethod: reservation.paymentMethod,
+      passenger: {
+        id: reservation.passenger.id,
+        name: reservation.passenger.name,
+        email: reservation.passenger.email,
+        document: reservation.passenger.document,
+        phone: reservation.passenger.phone,
+        birthDate: reservation.passenger.birthDate,
+      },
     };
   }
 }

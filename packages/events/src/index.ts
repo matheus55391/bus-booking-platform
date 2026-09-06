@@ -32,6 +32,11 @@ export type SeatConfirmedEvent = {
   reservationId: string;
   tripId: string;
   seatId: string;
+  seatLabel?: string;
+  orderCode?: string;
+  passengerName?: string;
+  passengerEmail?: string;
+  amountCents?: number;
 };
 
 export type SeatReleasedEvent = {
@@ -62,6 +67,10 @@ export type PaymentApprovedEvent = {
   reservationId: string;
   amountCents: number;
   transactionId: string;
+  orderCode?: string;
+  passengerName?: string;
+  passengerEmail?: string;
+  seatLabel?: string;
 };
 
 export type PaymentFailedEvent = {

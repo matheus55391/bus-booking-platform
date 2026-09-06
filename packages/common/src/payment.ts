@@ -1,3 +1,5 @@
+import type { PassengerData, PaymentMethod } from "./reservation";
+
 export type PaymentStatus = "PENDING" | "APPROVED" | "FAILED" | "REFUNDED";
 
 export type CreatePaymentInput = {
@@ -5,6 +7,8 @@ export type CreatePaymentInput = {
   amountCents: number;
   userId?: string;
   idempotencyKey: string;
+  passenger: PassengerData;
+  paymentMethod: PaymentMethod;
   /** Simulate failure for demos */
   forceFail?: boolean;
 };

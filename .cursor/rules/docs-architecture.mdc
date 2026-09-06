@@ -1,0 +1,38 @@
+---
+description: Manter AGENTS.md, lab-core e docs/architecture.md alinhados à arquitetura e fluxos reais
+alwaysApply: true
+---
+
+# Docs de arquitetura (sempre atualizar)
+
+Sempre que uma mudança **alterar o desenho do sistema**, atualize a documentação **na mesma tarefa** (não deixe para depois).
+
+## O que conta como mudança de desenho
+
+- Novo serviço, fila, exchange, topic RPC ou evento fanout
+- Mudança de dono de dado (ex.: Passenger vs Reservation)
+- Novo fluxo HTTP/RPC/evento (hold → pay → e-mail → lookup)
+- Portas, deps Docker (Postgres, Redis, RMQ, Mailpit, LGTM)
+- Contratos em `@repo/common` / `@repo/events` que mudam o fluxo
+
+## Fontes canônicas (nessa ordem)
+
+1. [`docs/architecture.md`](docs/architecture.md) — diagramas Mermaid + fluxos
+2. [`AGENTS.md`](AGENTS.md) — mapa ASCII, portas, comunicação
+3. [`.cursor/rules/lab-core.mdc`](.cursor/rules/lab-core.mdc) — resumo sempre-on do lab
+
+## Como atualizar
+
+- Preferir **Mermaid** (`flowchart` / `sequenceDiagram`) em `docs/architecture.md`
+- Manter ASCII curto em `AGENTS.md` e `lab-core.mdc` (1 bloco, sem novelas)
+- Nomes iguais aos do código: filas, topics, status, entidades Prisma
+- SMTP UI local = **Mailpit** (`:8025`), não MailHog
+- Se o fluxo antigo sumiu do código, **apague** o diagrama antigo (não acumular legado)
+
+## Checklist rápido ao fechar a mudança
+
+- [ ] Diagrama em `docs/architecture.md` reflete o fluxo novo
+- [ ] `AGENTS.md` / `lab-core` batem com serviços e portas
+- [ ] Nenhum doc cita path/fila/status que não existe mais
+
+Não criar páginas extras de docs sem pedido. Não adicionar alertas/SLO na doc de arquitetura.

@@ -4,6 +4,7 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { AppService, ServiceQueues } from '@repo/common';
 import { ObservabilityModule } from '../observability/observability.module';
 import { HealthController } from './controllers/health.controller';
+import { OrdersController } from './controllers/orders.controller';
 import { PaymentsController } from './controllers/payments.controller';
 import { ReservationsController } from './controllers/reservations.controller';
 import { TripsController } from './controllers/trips.controller';
@@ -54,6 +55,7 @@ const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
     TripsController,
     ReservationsController,
     PaymentsController,
+    OrdersController,
   ],
   providers: [HealthService, RmqClientService],
 })

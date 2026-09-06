@@ -1,10 +1,12 @@
-import type { Payment } from "@/types";
+import type { PassengerData, Payment, PaymentMethod } from "@/types";
 import { apiUrl, parseApiError } from "./client";
 
 export async function createPayment(input: {
   reservationId: string;
   amountCents: number;
   idempotencyKey: string;
+  passenger: PassengerData;
+  paymentMethod: PaymentMethod;
 }): Promise<Payment> {
   const response = await fetch(apiUrl("/payments"), {
     method: "POST",
@@ -15,7 +17,8 @@ export async function createPayment(input: {
     body: JSON.stringify({
       reservationId: input.reservationId,
       amountCents: input.amountCents,
-      userId: "demo-passenger",
+      passenger: input.passenger,
+      paymentMethod: input.paymentMethod,
     }),
   });
   if (!response.ok) {

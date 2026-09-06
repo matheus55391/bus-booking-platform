@@ -63,13 +63,32 @@ export class PaymentsService {
       return this.toResponse(existing, true);
     }
 
+    // Um pagamento ativo por reserva (evita double-click com keys diferentes)
+    const existingForReservation = await this.prisma.payment.findFirst({
+      where: {
+        reservationId,
+        status: { in: [PaymentStatus.PENDING, PaymentStatus.APPROVED] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existingForReservation) {
+      paymentsTotal.inc({ result: 'idempotent' });
+      return this.toResponse(existingForReservation, true);
+    }
+
     // 1) Promoove hold Redis → Reservation PENDING_PAYMENT no Postgres
+    if (!input.passenger || !input.paymentMethod) {
+      throw new BadRequestException('passenger and paymentMethod are required');
+    }
+
     let reservation: Reservation;
     try {
       reservation = await firstValueFrom(
         this.bookingClient
           .send<Reservation>(BookingTopics.BeginPayment, {
             reservationId,
+            passenger: input.passenger,
+            paymentMethod: input.paymentMethod,
           })
           .pipe(timeout(10_000)),
       );
@@ -150,6 +169,10 @@ export class PaymentsService {
         reservationId,
         amountCents: payment.amountCents,
         transactionId,
+        orderCode: reservation.orderCode ?? undefined,
+        passengerName: reservation.passenger?.name ?? undefined,
+        passengerEmail: reservation.passenger?.email ?? undefined,
+        seatLabel: reservation.seatLabel ?? undefined,
       };
       await this.rabbit.publish(RoutingKeys.PaymentApproved, event);
       paymentsTotal.inc({ result: 'approved' });

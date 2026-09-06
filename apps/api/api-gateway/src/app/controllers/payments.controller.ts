@@ -1,5 +1,10 @@
 import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
-import { AppService, PaymentTopics } from '@repo/common';
+import {
+  AppService,
+  PaymentTopics,
+  type PassengerData,
+  type PaymentMethod,
+} from '@repo/common';
 import { requireIdempotencyKey } from '../pipes/idempotency-key.pipe';
 import { RmqClientService } from '../services/rmq-client.service';
 
@@ -15,6 +20,8 @@ export class PaymentsController {
       amountCents: number;
       userId?: string;
       forceFail?: boolean;
+      passenger: PassengerData;
+      paymentMethod: PaymentMethod;
     },
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {

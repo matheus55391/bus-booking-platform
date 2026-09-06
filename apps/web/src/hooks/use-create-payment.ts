@@ -2,15 +2,41 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createPayment, getReservation } from "@/api";
-import { newIdempotencyKey } from "@/lib/format";
-import type { Payment, Reservation } from "@/types";
+import { digitsOnly } from "@/lib/masks";
+import type { PassengerFormInput } from "@/schemas";
+import type {
+  PassengerData,
+  Payment,
+  PaymentMethod,
+  Reservation,
+} from "@/types";
+
+type PayInput = {
+  reservation: Reservation;
+  form: PassengerFormInput;
+};
 
 type Options = {
   tripId: string;
   onReservationUpdate?: (reservation: Reservation) => void;
-  onSuccess?: (payment: Payment) => void;
+  onSuccess?: (payment: Payment, reservation: Reservation) => void;
   onError?: (error: Error) => void;
 };
+
+function toPassenger(form: PassengerFormInput): PassengerData {
+  return {
+    name: form.name.trim(),
+    email: form.email.trim().toLowerCase(),
+    document: digitsOnly(form.document),
+    phone: digitsOnly(form.phone),
+    birthDate: form.birthDate,
+  };
+}
+
+/** Key estável por reserva — double-click / retry não cria 2º pagamento. */
+function paymentIdempotencyKey(reservationId: string) {
+  return `pay-${reservationId}`;
+}
 
 export function useCreatePayment({
   tripId,
@@ -21,26 +47,31 @@ export function useCreatePayment({
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (reservation: Reservation) => {
-      const idempotencyKey = newIdempotencyKey(`pay-${reservation.id}`);
+    mutationFn: async ({ reservation, form }: PayInput) => {
+      const paymentMethod = form.paymentMethod as PaymentMethod;
       const payment = await createPayment({
         reservationId: reservation.id,
         amountCents: reservation.amountCents,
-        idempotencyKey,
+        idempotencyKey: paymentIdempotencyKey(reservation.id),
+        passenger: toPassenger(form),
+        paymentMethod,
       });
 
+      let current = reservation;
       for (let i = 0; i < 10; i++) {
         await new Promise((r) => setTimeout(r, 400));
-        const current = await getReservation(reservation.id);
+        current = await getReservation(reservation.id);
         onReservationUpdate?.(current);
-        if (current.status === "CONFIRMED") break;
+        if (current.status === "CONFIRMED" || current.status === "CANCELLED") {
+          break;
+        }
       }
 
-      return payment;
+      return { payment, reservation: current };
     },
-    onSuccess: async (payment) => {
+    onSuccess: async ({ payment, reservation }) => {
       await queryClient.invalidateQueries({ queryKey: ["trip-seats", tripId] });
-      onSuccess?.(payment);
+      onSuccess?.(payment, reservation);
     },
     onError: (error: Error) => onError?.(error),
   });

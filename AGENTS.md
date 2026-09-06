@@ -7,7 +7,7 @@ Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Paym
                                            │
                                 Fanout bus.fanout
                              /         |          \
-                        Trip      Booking     Notification → Mailhog
+                        Trip      Booking     Notification → Mailpit
 Apps → OTLP :4318 → Grafana LGTM
 
 apps/
@@ -15,12 +15,14 @@ apps/
   api/
     api-gateway/   # BFF HTTP; pasta app/{controllers,services,guards,pipes}
     trip-service/  # trip_queue + HTTP health
-    booking-service/
+    booking-service/  # Reservation + Passenger + hold Redis
     payment-service/
-    notification-service/  # e-mail via Mailhog
+    notification-service/  # e-mail via Mailpit
 packages/
   common/   # contratos + topics/queues (@repo/common)
   events/   # payloads de domínio (@repo/events)
+
+Diagramas Mermaid: [docs/architecture.md](docs/architecture.md)
 ```
 
 ## Comunicação
@@ -31,7 +33,7 @@ packages/
 | Gateway → serviços | RabbitMQ RPC (`ClientProxy.send` / `@MessagePattern`) |
 | Payment → Booking (begin payment) | RabbitMQ RPC |
 | Booking/Payment → Trip / Notification / Booking | Fanout `bus.fanout` + 1 fila por consumidor |
-| Notification → Mailhog | SMTP `:1025` |
+| Notification → Mailpit | SMTP `:1025` |
 
 Filas RPC: `trip_queue`, `booking_queue`, `payment_queue`.  
 Filas domínio (fanout): `trip_domain`, `booking_domain`, `notification_queue`.
@@ -45,7 +47,7 @@ Filas domínio (fanout): `trip_domain`, `booking_domain`, `notification_queue`.
 | RED | `http_requests_total`, `http_request_errors_total`, `http_request_duration_seconds` |
 | `/metrics` | scrape Prometheus local por serviço |
 | Grafana | http://localhost:3005 |
-| Mailhog | http://localhost:8025 |
+| Mailpit | http://localhost:8025 |
 
 ## Portas
 
@@ -58,8 +60,8 @@ Filas domínio (fanout): `trip_domain`, `booking_domain`, `notification_queue`.
 | payment | 3004 | `apps/api/payment-service` |
 | Grafana LGTM | 3005 | — |
 | notification | 3006 | `apps/api/notification-service` |
-| Mailhog UI | 8025 | — |
-| Mailhog SMTP | 1025 | — |
+| Mailpit UI | 8025 | — |
+| Mailpit SMTP | 1025 | — |
 
 ```sh
 pnpm docker:up && pnpm db:setup && pnpm dev

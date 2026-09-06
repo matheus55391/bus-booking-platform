@@ -67,15 +67,23 @@ export class NotificationsService implements OnModuleInit {
     }
   }
 
-  private resolveTo(userId?: string) {
+  private resolveTo(email?: string, userId?: string) {
+    if (email && email.includes('@')) {
+      return email;
+    }
     if (userId && userId.includes('@')) {
       return userId;
     }
     return this.defaultTo;
   }
 
+  private formatMoney(cents?: number) {
+    if (cents == null) return '—';
+    return `R$ ${(cents / 100).toFixed(2).replace('.', ',')}`;
+  }
+
   private async onSeatReserved(event: SeatReservedEvent) {
-    const to = this.resolveTo(event.userId);
+    const to = this.resolveTo(undefined, event.userId);
     const expires = new Date(event.expiresAt).toLocaleString('pt-BR');
     await this.mail.send({
       to,
@@ -86,7 +94,7 @@ export class NotificationsService implements OnModuleInit {
         '',
         `Seu assento ${event.seatLabel} foi reservado.`,
         `Reserva: ${event.reservationId}`,
-        `Valor: R$ ${(event.amountCents / 100).toFixed(2)}`,
+        `Valor: ${this.formatMoney(event.amountCents)}`,
         `Expira em: ${expires}`,
         '',
         'Conclua o pagamento antes do vencimento para confirmar a passagem.',
@@ -97,21 +105,39 @@ export class NotificationsService implements OnModuleInit {
   }
 
   private async onSeatConfirmed(event: SeatConfirmedEvent) {
+    const to = this.resolveTo(event.passengerEmail);
+    const greeting = event.passengerName
+      ? `Olá, ${event.passengerName}!`
+      : 'Olá!';
     await this.mail.send({
-      to: this.defaultTo,
+      to,
       template: 'seat_confirmed',
-      subject: 'Passagem confirmada',
+      subject: event.orderCode
+        ? `Passagem confirmada · ${event.orderCode}`
+        : 'Passagem confirmada',
       text: [
-        'Pagamento confirmado!',
+        greeting,
         '',
+        'Pagamento confirmado! Sua passagem está garantida.',
+        '',
+        event.orderCode ? `Código do pedido: ${event.orderCode}` : null,
         `Reserva: ${event.reservationId}`,
-        `Assento (id): ${event.seatId}`,
+        event.seatLabel
+          ? `Assento: ${event.seatLabel}`
+          : `Assento (id): ${event.seatId}`,
         `Viagem: ${event.tripId}`,
+        event.amountCents != null
+          ? `Valor: ${this.formatMoney(event.amountCents)}`
+          : null,
+        '',
+        'Guarde este e-mail. Para consultar o pedido, use o código acima com seu e-mail ou CPF.',
         '',
         'Boa viagem!',
         '',
         '— Rodoviária',
-      ].join('\n'),
+      ]
+        .filter((line): line is string => line !== null)
+        .join('\n'),
     });
   }
 
@@ -137,6 +163,11 @@ export class NotificationsService implements OnModuleInit {
   }
 
   private async onPaymentApproved(event: PaymentApprovedEvent) {
+    // Ticket principal sai em seat.confirmed (com orderCode/assento).
+    // Aqui só confirma o recebimento do pagamento se ainda não houver e-mail guest.
+    if (event.passengerEmail) {
+      return;
+    }
     await this.mail.send({
       to: this.defaultTo,
       template: 'payment_approved',
@@ -146,7 +177,7 @@ export class NotificationsService implements OnModuleInit {
         '',
         `Pagamento: ${event.paymentId}`,
         `Reserva: ${event.reservationId}`,
-        `Valor: R$ ${(event.amountCents / 100).toFixed(2)}`,
+        `Valor: ${this.formatMoney(event.amountCents)}`,
         `Transação: ${event.transactionId}`,
         '',
         '— Rodoviária',

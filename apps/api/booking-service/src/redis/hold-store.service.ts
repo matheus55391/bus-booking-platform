@@ -10,6 +10,11 @@ const KEY = {
   expiring: 'bus:hold:expiring',
 } as const;
 
+export type TryCreateHoldResult =
+  | { status: 'created'; hold: SeatHold }
+  | { status: 'idempotent'; hold: SeatHold }
+  | { status: 'seat_taken' };
+
 @Injectable()
 export class HoldStoreService implements OnModuleDestroy {
   private readonly redis: Redis;
@@ -50,12 +55,28 @@ export class HoldStoreService implements OnModuleDestroy {
   }
 
   /**
-   * Cria hold atômico no assento (SET NX + TTL).
-   * Retorna null se o assento já estiver sob hold.
+   * Cria hold atômico: Idempotency-Key NX + assento NX + TTL.
+   * - idempotent: mesma key já criou hold (replay seguro)
+   * - seat_taken: outro hold no assento
    */
-  async tryCreate(hold: SeatHold): Promise<SeatHold | null> {
+  async tryCreate(hold: SeatHold): Promise<TryCreateHoldResult> {
     const ttl = this.ttlSeconds;
     const expiresAtMs = new Date(hold.expiresAt).getTime();
+
+    const idemOk = await this.redis.set(
+      KEY.idem(hold.idempotencyKey),
+      hold.id,
+      'EX',
+      ttl,
+      'NX',
+    );
+    if (idemOk !== 'OK') {
+      const existing = await this.getByIdempotencyKey(hold.idempotencyKey);
+      if (existing) {
+        return { status: 'idempotent', hold: existing };
+      }
+      return { status: 'seat_taken' };
+    }
 
     const seatOk = await this.redis.set(
       KEY.seat(hold.tripId, hold.seatId),
@@ -65,15 +86,15 @@ export class HoldStoreService implements OnModuleDestroy {
       'NX',
     );
     if (seatOk !== 'OK') {
-      return null;
+      await this.redis.del(KEY.idem(hold.idempotencyKey));
+      return { status: 'seat_taken' };
     }
 
     const pipeline = this.redis.pipeline();
     pipeline.set(KEY.hold(hold.id), JSON.stringify(hold), 'EX', ttl);
-    pipeline.set(KEY.idem(hold.idempotencyKey), hold.id, 'EX', ttl);
     pipeline.zadd(KEY.expiring, expiresAtMs, hold.id);
     await pipeline.exec();
-    return hold;
+    return { status: 'created', hold };
   }
 
   /**

@@ -10,7 +10,7 @@ Web ──HTTP──► API Gateway ──RMQ RPC──► Trip | Booking | Paym
                                     │
                          Fanout bus.fanout (1 fila / consumidor)
                       /            |            \
-                   Trip         Booking      Notification → Mailhog
+                   Trip         Booking      Notification → Mailpit
 Grafana LGTM (:3005) ← OTLP
 
 apps/api/api-gateway/src/app/
@@ -21,10 +21,12 @@ packages/events  ← seat.* / payment.* (Fanout)
 ```
 
 Booking dono da Reservation. Payment dono do Payment. Trip projeta assentos.
-Notification consome eventos e envia e-mail (Mailhog em local).
+Notification consome eventos e envia e-mail (Mailpit em local).
 
 Hold não pago: Redis + evento `seat.reserved` (não grava Reservation no PG).
-Postgres: Reservation entra em `PENDING_PAYMENT` no início do pagamento;
-vira `CONFIRMED` / `CANCELLED` / `EXPIRED` depois.
+Postgres: Reservation entra em `PENDING_PAYMENT` no início do pagamento
+(com entidade `Passenger`); vira `CONFIRMED` / `CANCELLED` / `EXPIRED` depois.
 
 Idempotência obrigatória em reserva e pagamento.
+
+Diagramas vivos: `docs/architecture.md` (rule `docs-architecture`).

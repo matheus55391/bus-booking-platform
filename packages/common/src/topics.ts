@@ -8,6 +8,7 @@ export const BookingTopics = {
   CreateReservation: "booking.create-reservation",
   GetReservation: "booking.get-reservation",
   BeginPayment: "booking.begin-payment",
+  LookupReservation: "booking.lookup-reservation",
 } as const;
 
 export const PaymentTopics = {
