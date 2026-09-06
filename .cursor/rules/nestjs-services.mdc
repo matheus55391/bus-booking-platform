@@ -1,0 +1,14 @@
+---
+description: NestJS services — booking, payment, eventos, observabilidade
+globs: apps/api/{api-gateway,trip-service,booking-service,payment-service}/**/*
+alwaysApply: false
+---
+
+# NestJS services
+
+- `api-gateway`: BFF HTTP; RPC via RabbitMQ (`RmqClientService`); pasta `app/{controllers,services,guards,pipes}`
+- Trip / Booking / Payment: `@MessagePattern` na fila do serviço + HTTP só para `/health` e `/metrics`
+- Eventos de domínio (`seat.*`, `payment.*`): exchange `bus.fanout` (`@repo/events`)
+- Contratos/topics: `@repo/common`
+- Prisma clients: `@bus/trip-prisma`, `@bus/booking-prisma`, `@bus/payment-prisma`
+- OTEL → `OTEL_EXPORTER_OTLP_ENDPOINT` (Grafana LGTM); `/metrics` Prometheus

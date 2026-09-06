@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../../node_modules/@bus/booking-prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Postgres só entra no funil a partir do checkout.
+/// Hold não pago mora no Redis + evento seat.reserved (RabbitMQ).
+enum ReservationStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+}
+
+/// Passageiro guest (sem conta). Uma pessoa pode ter várias reservas.
+model Passenger {
+  id           String        @id @default(cuid())
+  name         String
+  email        String
+  document     String
+  phone        String
+  birthDate    String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  reservations Reservation[]
+
+  @@index([email])
+  @@index([document])
+}
+
+model Reservation {
+  id             String            @id @default(cuid())
+  tripId         String
+  seatId         String
+  /// Legado / compat: e-mail do passageiro ou "guest"
+  userId         String
+  amountCents    Int
+  status         ReservationStatus @default(PENDING_PAYMENT)
+  expiresAt      DateTime
+  idempotencyKey String            @unique
+  orderCode      String            @unique
+  paymentMethod  PaymentMethod
+  passengerId    String
+  passenger      Passenger         @relation(fields: [passengerId], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([tripId, seatId])
+  @@index([passengerId])
+}
+
+/// Outbox transacional: evento na mesma tx do estado; relay publica no Rabbit.
+model OutboxEvent {
+  id          String    @id @default(cuid())
+  routingKey  String
+  payload     Json
+  attempts    Int       @default(0)
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+  poisonedAt  DateTime?
+
+  @@index([publishedAt, createdAt])
+  @@index([poisonedAt, createdAt])
+}

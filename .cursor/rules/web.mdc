@@ -1,0 +1,24 @@
+---
+description: Frontend — src/ com api, hooks, schemas, context, types
+globs: apps/web/**/*
+alwaysApply: false
+---
+
+# Web (`apps/web/src`)
+
+```text
+src/
+  app/          RSC (busca, lista, dados iniciais)
+  api/          serviços HTTP (trips, reservations, payments)
+  components/   UI
+  context/      providers (TanStack Query)
+  hooks/        react-query hooks
+  schemas/      Zod
+  types/        tipos de domínio
+  lib/          format helpers
+```
+
+- Contratos: `@repo/common` (web reexporta em `src/types`)
+- Só fala com `api-gateway` (`NEXT_PUBLIC_API_GATEWAY_URL` / `API_GATEWAY_URL`)
+- Busca: RHF + Zod · Reserva: TanStack Query
+- `Idempotency-Key` em reserve e pay
