@@ -35,6 +35,12 @@ export type BeginPaymentInput = {
   paymentMethod: PaymentMethod;
 };
 
+/** Compensação da saga de checkout (após beginPayment). */
+export type CompensateCheckoutInput = {
+  reservationId: string;
+  reason: string;
+};
+
 export type LookupReservationInput = {
   orderCode: string;
   email?: string;

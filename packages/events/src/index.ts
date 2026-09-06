@@ -2,12 +2,15 @@
 export const EXCHANGE = "bus.fanout";
 export const EXCHANGE_TYPE = "fanout" as const;
 
+/** Dead-letter: mensagens com nack(requeue=false) caem aqui. */
+export const DLX_EXCHANGE = "bus.dlx";
+export const DLX_EXCHANGE_TYPE = "fanout" as const;
+
 /** Tipo do evento (vai no payload + routing key da mensagem; fanout ignora a key p/ roteamento). */
 export const RoutingKeys = {
   SeatReserved: "seat.reserved",
   SeatConfirmed: "seat.confirmed",
   SeatReleased: "seat.released",
-  PaymentRequested: "payment.requested",
   PaymentApproved: "payment.approved",
   PaymentFailed: "payment.failed",
 } as const;
@@ -47,16 +50,6 @@ export type SeatReleasedEvent = {
   tripId: string;
   seatId: string;
   reason: "EXPIRED" | "CANCELLED";
-};
-
-export type PaymentRequestedEvent = {
-  eventId: string;
-  type: typeof RoutingKeys.PaymentRequested;
-  occurredAt: string;
-  reservationId: string;
-  amountCents: number;
-  userId: string;
-  idempotencyKey: string;
 };
 
 export type PaymentApprovedEvent = {

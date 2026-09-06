@@ -3,6 +3,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { BookingTopics } from '@repo/common';
 import type {
   BeginPaymentInput,
+  CompensateCheckoutInput,
   CreateReservationInput,
   LookupReservationInput,
 } from '@repo/common';
@@ -25,6 +26,11 @@ export class ReservationsController {
   @MessagePattern(BookingTopics.BeginPayment)
   beginPayment(@Payload() input: BeginPaymentInput) {
     return this.reservationsService.beginPayment(input);
+  }
+
+  @MessagePattern(BookingTopics.CompensateCheckout)
+  compensateCheckout(@Payload() input: CompensateCheckoutInput) {
+    return this.reservationsService.compensateCheckout(input);
   }
 
   @MessagePattern(BookingTopics.LookupReservation)

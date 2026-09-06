@@ -13,6 +13,7 @@ import {
 } from '@bus/booking-prisma';
 import type {
   BeginPaymentInput,
+  CompensateCheckoutInput,
   CreateReservationInput,
   LookupReservationInput,
   PassengerData,
@@ -30,6 +31,7 @@ import { randomInt, randomUUID } from 'crypto';
 import { RabbitMqService } from '../messaging/rabbitmq.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { HoldStoreService } from '../redis/hold-store.service';
+import { OutboxService } from '../outbox/outbox.service';
 import {
   holdsConfirmed,
   holdsCreated,
@@ -101,6 +103,7 @@ export class ReservationsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly rabbit: RabbitMqService,
     private readonly holds: HoldStoreService,
+    private readonly outbox: OutboxService,
   ) {}
 
   async onModuleInit() {
@@ -126,7 +129,7 @@ export class ReservationsService implements OnModuleInit {
   async create(input: CreateReservationInput) {
     const tripId = input.tripId?.trim();
     const seatId = input.seatId?.trim();
-    const userId = (input.userId?.trim() || 'demo-passenger').slice(0, 120);
+    const userId = (input.userId?.trim() || 'guest').slice(0, 120);
     const idempotencyKey = input.idempotencyKey?.trim();
 
     if (!tripId || !seatId) {
@@ -234,26 +237,29 @@ export class ReservationsService implements OnModuleInit {
         );
       }
 
-      await this.prisma.$executeRaw`
-        UPDATE "Trip"
-        SET "availableSeats" = GREATEST("availableSeats" - 1, 0),
-            "updatedAt" = NOW()
-        WHERE id = ${tripId}
-      `;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`
+          UPDATE "Trip"
+          SET "availableSeats" = GREATEST("availableSeats" - 1, 0),
+              "updatedAt" = NOW()
+          WHERE id = ${tripId}
+        `;
 
-      const event: SeatReservedEvent = {
-        eventId: randomUUID(),
-        type: RoutingKeys.SeatReserved,
-        occurredAt: new Date().toISOString(),
-        reservationId: created.hold.id,
-        tripId: created.hold.tripId,
-        seatId: created.hold.seatId,
-        seatLabel: created.hold.seatLabel,
-        userId: created.hold.userId,
-        expiresAt: created.hold.expiresAt,
-        amountCents: created.hold.amountCents,
-      };
-      await this.rabbit.publish(RoutingKeys.SeatReserved, event);
+        const event: SeatReservedEvent = {
+          eventId: randomUUID(),
+          type: RoutingKeys.SeatReserved,
+          occurredAt: new Date().toISOString(),
+          reservationId: created.hold.id,
+          tripId: created.hold.tripId,
+          seatId: created.hold.seatId,
+          seatLabel: created.hold.seatLabel,
+          userId: created.hold.userId,
+          expiresAt: created.hold.expiresAt,
+          amountCents: created.hold.amountCents,
+        };
+        await this.outbox.enqueue(tx, RoutingKeys.SeatReserved, event, event.eventId);
+      });
+      this.outbox.kickRelay();
 
       holdsCreated.inc({ result: 'created', origin, destination });
       this.log.info('hold_created', {
@@ -483,6 +489,20 @@ export class ReservationsService implements OnModuleInit {
 
     try {
       let didConfirm = false;
+      const confirmed: SeatConfirmedEvent = {
+        eventId: randomUUID(),
+        type: RoutingKeys.SeatConfirmed,
+        occurredAt: new Date().toISOString(),
+        reservationId: event.reservationId,
+        tripId,
+        seatId,
+        seatLabel: hold?.seatLabel,
+        orderCode: reservation.orderCode,
+        passengerName: reservation.passenger.name,
+        passengerEmail: reservation.passenger.email,
+        amountCents: reservation.amountCents,
+      };
+
       await this.prisma.$transaction(async (tx) => {
         const updated = await tx.reservation.updateMany({
           where: {
@@ -502,12 +522,21 @@ export class ReservationsService implements OnModuleInit {
           WHERE id = ${seatId}
             AND status IN ('HELD', 'SOLD')
         `;
+
+        await this.outbox.enqueue(
+          tx,
+          RoutingKeys.SeatConfirmed,
+          confirmed,
+          confirmed.eventId,
+        );
       });
 
       if (!didConfirm) {
         if (hold) await this.holds.delete(hold);
         return;
       }
+
+      this.outbox.kickRelay();
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -522,21 +551,6 @@ export class ReservationsService implements OnModuleInit {
     if (hold) {
       await this.holds.delete(hold);
     }
-
-    const confirmed: SeatConfirmedEvent = {
-      eventId: randomUUID(),
-      type: RoutingKeys.SeatConfirmed,
-      occurredAt: new Date().toISOString(),
-      reservationId: event.reservationId,
-      tripId,
-      seatId,
-      seatLabel: hold?.seatLabel,
-      orderCode: reservation.orderCode,
-      passengerName: reservation.passenger.name,
-      passengerEmail: reservation.passenger.email,
-      amountCents: reservation.amountCents,
-    };
-    await this.rabbit.publish(RoutingKeys.SeatConfirmed, confirmed);
 
     const route = hold ? holdRoute(hold) : { origin: 'unknown', destination: 'unknown' };
     holdsConfirmed.inc(route);
@@ -556,27 +570,76 @@ export class ReservationsService implements OnModuleInit {
   }
 
   async onPaymentFailed(event: PaymentFailedEvent) {
-    const reservation = await this.prisma.reservation.findUnique({
-      where: { id: event.reservationId },
+    await this.compensateCheckout({
+      reservationId: event.reservationId,
+      reason: event.reason,
     });
-
-    if (reservation?.status === ReservationStatus.PENDING_PAYMENT) {
-      await this.prisma.reservation.update({
-        where: { id: event.reservationId },
-        data: { status: ReservationStatus.CANCELLED },
-      });
-    }
-
-    const hold = await this.holds.getById(event.reservationId);
-    if (hold) {
-      await this.releaseHold(hold, 'CANCELLED');
-    }
-
     this.log.warn('payment_failed_released', {
       reservationId: event.reservationId,
       paymentId: event.paymentId,
       reason: event.reason,
     });
+  }
+
+  /**
+   * Compensação da saga de checkout: cancela PENDING_PAYMENT e libera hold/assento.
+   * Idempotente (CANCELLED / EXPIRED / sem hold = ok).
+   */
+  async compensateCheckout(input: CompensateCheckoutInput) {
+    const id = input.reservationId?.trim();
+    if (!id) {
+      throw new BadRequestException('reservationId is required');
+    }
+
+    const reservation = await this.prisma.reservation.findUnique({
+      where: { id },
+      include: { passenger: true },
+    });
+
+    if (reservation?.status === ReservationStatus.CONFIRMED) {
+      this.log.warn('compensate_skipped_confirmed', {
+        reservationId: id,
+        reason: input.reason,
+      });
+      return { ok: true, skipped: true, status: reservation.status };
+    }
+
+    if (reservation?.status === ReservationStatus.PENDING_PAYMENT) {
+      await this.prisma.reservation.update({
+        where: { id },
+        data: { status: ReservationStatus.CANCELLED },
+      });
+    }
+
+    const hold = await this.holds.getById(id);
+    if (hold) {
+      await this.releaseHold(hold, 'CANCELLED');
+    } else if (
+      reservation &&
+      (reservation.status === ReservationStatus.PENDING_PAYMENT ||
+        reservation.status === ReservationStatus.CANCELLED)
+    ) {
+      // Hold já sumiu: ainda tenta liberar assento HELD órfão
+      await this.prisma.$executeRaw`
+        UPDATE "Seat"
+        SET status = 'AVAILABLE', "updatedAt" = NOW()
+        WHERE id = ${reservation.seatId}
+          AND status = 'HELD'
+      `;
+    }
+
+    this.log.warn('checkout_compensated', {
+      reservationId: id,
+      reason: input.reason,
+      hadHold: Boolean(hold),
+      previousStatus: reservation?.status,
+    });
+
+    return {
+      ok: true,
+      skipped: false,
+      status: reservation?.status ?? 'NO_RESERVATION',
+    };
   }
 
   @Cron(CronExpression.EVERY_10_SECONDS)
@@ -622,21 +685,94 @@ export class ReservationsService implements OnModuleInit {
     }
   }
 
+  /**
+   * Healing: PENDING_PAYMENT expirado sem Redis, e Seat HELD órfão sem hold NX.
+   */
+  @Cron(CronExpression.EVERY_30_SECONDS)
+  async healOrphans() {
+    try {
+      const expiredPending = await this.prisma.reservation.findMany({
+        where: {
+          status: ReservationStatus.PENDING_PAYMENT,
+          expiresAt: { lt: new Date() },
+        },
+        take: 50,
+      });
+
+      for (const reservation of expiredPending) {
+        const hold = await this.holds.getById(reservation.id);
+        if (hold) continue;
+
+        await this.prisma.reservation.update({
+          where: { id: reservation.id },
+          data: { status: ReservationStatus.EXPIRED },
+        });
+        await this.prisma.$executeRaw`
+          UPDATE "Seat"
+          SET status = 'AVAILABLE', "updatedAt" = NOW()
+          WHERE id = ${reservation.seatId}
+            AND status = 'HELD'
+        `;
+        await this.prisma.$executeRaw`
+          UPDATE "Trip"
+          SET "availableSeats" = "availableSeats" + 1,
+              "updatedAt" = NOW()
+          WHERE id = ${reservation.tripId}
+        `;
+        this.log.warn('healed_expired_pending_without_hold', {
+          reservationId: reservation.id,
+          seatId: reservation.seatId,
+        });
+      }
+
+      const heldSeats = await this.prisma.$queryRaw<
+        { id: string; tripId: string }[]
+      >`
+        SELECT id, "tripId" FROM "Seat"
+        WHERE status = 'HELD'
+        LIMIT 100
+      `;
+
+      for (const seat of heldSeats) {
+        const holdId = await this.holds.getHoldIdBySeat(seat.tripId, seat.id);
+        if (holdId) continue;
+
+        const activeCheckout = await this.prisma.reservation.findFirst({
+          where: {
+            seatId: seat.id,
+            tripId: seat.tripId,
+            status: ReservationStatus.PENDING_PAYMENT,
+            expiresAt: { gt: new Date() },
+          },
+        });
+        if (activeCheckout) continue;
+
+        await this.prisma.$executeRaw`
+          UPDATE "Seat"
+          SET status = 'AVAILABLE', "updatedAt" = NOW()
+          WHERE id = ${seat.id}
+            AND status = 'HELD'
+        `;
+        await this.prisma.$executeRaw`
+          UPDATE "Trip"
+          SET "availableSeats" = "availableSeats" + 1,
+              "updatedAt" = NOW()
+          WHERE id = ${seat.tripId}
+        `;
+        this.log.warn('healed_orphan_held_seat', {
+          seatId: seat.id,
+          tripId: seat.tripId,
+        });
+      }
+    } catch (error) {
+      this.log.error('heal_orphans_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private async releaseHold(hold: SeatHold, reason: 'EXPIRED' | 'CANCELLED') {
     await this.holds.delete(hold);
-
-    await this.prisma.$executeRaw`
-      UPDATE "Seat"
-      SET status = 'AVAILABLE', "updatedAt" = NOW()
-      WHERE id = ${hold.seatId}
-        AND status = 'HELD'
-    `;
-    await this.prisma.$executeRaw`
-      UPDATE "Trip"
-      SET "availableSeats" = "availableSeats" + 1,
-          "updatedAt" = NOW()
-      WHERE id = ${hold.tripId}
-    `;
 
     const released: SeatReleasedEvent = {
       eventId: randomUUID(),
@@ -647,7 +783,28 @@ export class ReservationsService implements OnModuleInit {
       seatId: hold.seatId,
       reason,
     };
-    await this.rabbit.publish(RoutingKeys.SeatReleased, released);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "Seat"
+        SET status = 'AVAILABLE', "updatedAt" = NOW()
+        WHERE id = ${hold.seatId}
+          AND status = 'HELD'
+      `;
+      await tx.$executeRaw`
+        UPDATE "Trip"
+        SET "availableSeats" = "availableSeats" + 1,
+            "updatedAt" = NOW()
+        WHERE id = ${hold.tripId}
+      `;
+      await this.outbox.enqueue(
+        tx,
+        RoutingKeys.SeatReleased,
+        released,
+        released.eventId,
+      );
+    });
+    this.outbox.kickRelay();
 
     const route = holdRoute(hold);
     holdsExpired.inc({ ...route, reason });

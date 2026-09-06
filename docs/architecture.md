@@ -11,7 +11,7 @@ flowchart LR
   GW -->|RPC booking_queue| Booking[Booking :3003]
   GW -->|RPC payment_queue| Payment[Payment :3004]
   Payment -->|RPC BeginPayment| Booking
-  Booking -->|fanout bus.fanout| Fanout((bus.fanout))
+  Booking -->|outbox + fanout bus.fanout| Fanout((bus.fanout))
   Payment -->|fanout bus.fanout| Fanout
   Fanout --> TripDomain[trip_domain]
   Fanout --> BookingDomain[booking_domain]
@@ -26,7 +26,7 @@ flowchart LR
 | Dado | Dono |
 |------|------|
 | Trip / Seat | Trip Service |
-| Hold (Redis) + Reservation + Passenger | Booking Service |
+| Hold (Redis) + Reservation + Passenger + Outbox | Booking Service |
 | Payment | Payment Service |
 | E-mail | Notification Service |
 
@@ -42,6 +42,7 @@ sequenceDiagram
   participant GW as Gateway
   participant Booking
   participant Payment
+  participant Saga as CheckoutSaga
   participant Notif
   participant Mailpit
 
@@ -51,12 +52,17 @@ sequenceDiagram
 
   Web->>GW: POST /payments + passenger + method
   GW->>Payment: payment.create
-  Payment->>Booking: booking.begin-payment
+  Payment->>Saga: run
+  Saga->>Booking: begin-payment
   Booking->>Booking: Passenger + Reservation PENDING_PAYMENT + orderCode
-  Payment-->>Payment: mock APPROVED
-  Payment-->>Notif: payment.approved
-  Booking-->>Notif: seat.confirmed
-  Notif->>Mailpit: ticket para passenger.email
+  alt charge OK
+    Saga-->>Notif: payment.approved
+    Booking-->>Notif: seat.confirmed (outbox)
+    Notif->>Mailpit: ticket
+  else charge fail / erro após begin-payment
+    Saga->>Booking: compensate-checkout
+    Booking->>Booking: CANCELLED + libera assento
+  end
 
   Web->>GW: GET /orders/lookup?orderCode&email|document
   GW->>Booking: booking.lookup-reservation
@@ -82,7 +88,14 @@ sequenceDiagram
 | Concorrência assento | `UPDATE Seat WHERE AVAILABLE` + Redis `SET NX` no assento |
 | Idempotência hold | Header `Idempotency-Key` → Redis `SET NX` + unique em Reservation |
 | Idempotência pagamento | Key estável `pay-{reservationId}` + unique key + no máximo 1 PENDING/APPROVED por reserva |
-| Confirm atômico | `updateMany` só se `PENDING_PAYMENT` + Seat → `SOLD` na mesma tx |
+| Confirm atômico | `updateMany` só se `PENDING_PAYMENT` + Seat → `SOLD` + outbox na mesma tx |
 | Checkout vs TTL | `refresh` Redis no `beginPayment` (janela extra) |
+| Outbox (Booking) | Evento em `OutboxEvent` na mesma tx; relay publica; `attempts`/`poisonedAt` após 5 falhas |
+| Saga checkout | Payment orquestra: beginPayment → charge → event; falha → `compensate-checkout` |
+| DLQ domain | `nack(requeue=false)` → DLX `bus.dlx` → `{queue}.dlq`; prefetch 10 |
+| Rate limit | Gateway: 20 req/min em `POST /payments` e `GET /orders/lookup` |
+| Healing | Cron 30s: PENDING_PAYMENT expirado sem Redis; Seat HELD órfão |
 
-Aceitável no lab (não overengineer): `availableSeats` eventual; fanout at-least-once (handlers idempotentes); sem outbox/saga.
+Aceitável no lab (não overengineer): `availableSeats` eventual; sem 2PC; Payment ainda publica direto (retry 3x).
+
+**Nota filas:** se o Rabbit já tinha filas domain sem DLX, delete-as na UI (`trip_domain`, `booking_domain`, `notification_queue`) e reinicie os serviços.

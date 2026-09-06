@@ -59,3 +59,18 @@ model Reservation {
   @@index([tripId, seatId])
   @@index([passengerId])
 }
+
+/// Outbox transacional: evento na mesma tx do estado; relay publica no Rabbit.
+model OutboxEvent {
+  id          String    @id @default(cuid())
+  routingKey  String
+  payload     Json
+  attempts    Int       @default(0)
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+  poisonedAt  DateTime?
+
+  @@index([publishedAt, createdAt])
+  @@index([poisonedAt, createdAt])
+}

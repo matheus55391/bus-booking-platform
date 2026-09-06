@@ -16,7 +16,7 @@ export async function createReservation(input: {
     body: JSON.stringify({
       tripId: input.tripId,
       seatId: input.seatId,
-      userId: input.userId ?? "demo-passenger",
+      userId: input.userId ?? "guest",
     }),
   });
   if (!response.ok) {

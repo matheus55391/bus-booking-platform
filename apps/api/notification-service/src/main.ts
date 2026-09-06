@@ -13,7 +13,7 @@ async function bootstrap() {
   log.info('listening', {
     port,
     queue: ServiceQueues.Notification,
-    mailhog: 'http://localhost:8025',
+    mailpit: 'http://localhost:8025',
   });
 }
 

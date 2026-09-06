@@ -14,6 +14,17 @@ enum PaymentStatus {
   FAILED
 }
 
+/// Saga orquestrada de checkout (Payment é o orquestrador).
+enum CheckoutSagaStatus {
+  STARTED
+  PAYMENT_WINDOW_OPEN
+  CHARGED
+  COMPLETED
+  COMPENSATING
+  COMPENSATED
+  FAILED
+}
+
 model Payment {
   id             String        @id @default(cuid())
   reservationId  String
@@ -24,6 +35,20 @@ model Payment {
   failureReason  String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+
+  @@index([reservationId])
+  @@index([status])
+}
+
+model CheckoutSaga {
+  id             String             @id @default(cuid())
+  reservationId  String
+  idempotencyKey String             @unique
+  paymentId      String?
+  status         CheckoutSagaStatus @default(STARTED)
+  failureReason  String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   @@index([reservationId])
   @@index([status])

@@ -20,13 +20,18 @@ packages/common  ← contratos + topics/queues
 packages/events  ← seat.* / payment.* (Fanout)
 ```
 
-Booking dono da Reservation. Payment dono do Payment. Trip projeta assentos.
+Booking dono da Reservation + Passenger + **Outbox**. Payment dono do Payment. Trip projeta assentos.
 Notification consome eventos e envia e-mail (Mailpit em local).
 
-Hold não pago: Redis + evento `seat.reserved` (não grava Reservation no PG).
+Hold não pago: Redis + outbox `seat.reserved` (não grava Reservation no PG).
 Postgres: Reservation entra em `PENDING_PAYMENT` no início do pagamento
 (com entidade `Passenger`); vira `CONFIRMED` / `CANCELLED` / `EXPIRED` depois.
+Eventos de domínio Booking: mesma tx → `OutboxEvent` → relay → `bus.fanout`.
+Checkout: **saga orquestrada no Payment** (`CheckoutSaga` + `compensate-checkout` no Booking).
+Fanout: DLX `bus.dlx` + `{queue}.dlq`; Gateway throttles payments/lookup.
 
 Idempotência obrigatória em reserva e pagamento.
 
 Diagramas vivos: `docs/architecture.md` (rule `docs-architecture`).
+
+🧠 Guarda essa frase para entrevista: *"Saga de checkout = orquestrador no Payment; se a cobrança falha depois do beginPayment, compensação libera o assento."*

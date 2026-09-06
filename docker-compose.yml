@@ -50,10 +50,9 @@ services:
       retries: 10
 
   # SMTP local para o notification-service (UI em :8025)
-  # Mailpit: multi-arch (arm64/amd64); substituto moderno do MailHog
-  mailhog:
+  mailpit:
     image: axllent/mailpit:v1.27
-    container_name: bus-mailhog
+    container_name: bus-mailpit
     restart: unless-stopped
     ports:
       - "1025:1025" # SMTP

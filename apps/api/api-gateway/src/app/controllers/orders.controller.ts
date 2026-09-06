@@ -1,8 +1,11 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AppService, BookingTopics } from '@repo/common';
 import { RmqClientService } from '../services/rmq-client.service';
 
 @Controller('orders')
+@UseGuards(ThrottlerGuard)
+@Throttle({ default: { limit: 20, ttl: 60_000 } })
 export class OrdersController {
   constructor(private readonly rmq: RmqClientService) {}
 

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppService, ServiceQueues } from '@repo/common';
 import { ObservabilityModule } from '../observability/observability.module';
 import { HealthController } from './controllers/health.controller';
@@ -18,6 +19,9 @@ const rabbitUrl = process.env.RABBITMQ_URL ?? 'amqp://bus:bus@localhost:5672';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env', '../../../.env'],
+    }),
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
     }),
     ObservabilityModule,
     ClientsModule.register([

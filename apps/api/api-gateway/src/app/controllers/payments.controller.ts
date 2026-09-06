@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, UseGuards } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import {
   AppService,
   PaymentTopics,
@@ -9,6 +10,8 @@ import { requireIdempotencyKey } from '../pipes/idempotency-key.pipe';
 import { RmqClientService } from '../services/rmq-client.service';
 
 @Controller('payments')
+@UseGuards(ThrottlerGuard)
+@Throttle({ default: { limit: 20, ttl: 60_000 } })
 export class PaymentsController {
   constructor(private readonly rmq: RmqClientService) {}
 

@@ -1,7 +1,12 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
-import { EXCHANGE, EXCHANGE_TYPE } from '@repo/events';
+import {
+  DLX_EXCHANGE,
+  DLX_EXCHANGE_TYPE,
+  EXCHANGE,
+  EXCHANGE_TYPE,
+} from '@repo/events';
 import {
   createLogger,
   getServiceName,
@@ -14,6 +19,8 @@ import {
 import { randomUUID } from 'crypto';
 
 type MessageHandler = (payload: unknown, routingKey: string) => Promise<void>;
+
+const PREFETCH = 10;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -28,9 +35,13 @@ function toTraceCarrier(
   return { ...headers };
 }
 
+function dlqName(queue: string): string {
+  return `${queue}.dlq`;
+}
+
 /**
  * Domínio via Fanout: publish(routingKey) → todos os consumidores com fila própria.
- * `interestKeys` filtra no consumer (fanout entrega tudo).
+ * Falha no consumer → nack(requeue=false) → DLX `bus.dlx` → `{queue}.dlq`.
  */
 @Injectable()
 export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
@@ -48,12 +59,18 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
 
     this.connection = await amqp.connect(url);
     this.channel = await this.connection.createChannel();
+    await this.channel.prefetch(PREFETCH);
     await this.channel.assertExchange(EXCHANGE, EXCHANGE_TYPE, {
+      durable: true,
+    });
+    await this.channel.assertExchange(DLX_EXCHANGE, DLX_EXCHANGE_TYPE, {
       durable: true,
     });
     this.log.info('connected to RabbitMQ', {
       exchange: EXCHANGE,
       type: EXCHANGE_TYPE,
+      dlx: DLX_EXCHANGE,
+      prefetch: PREFETCH,
     });
   }
 
@@ -79,7 +96,6 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
       () => {
         const traceHeaders = injectTraceCarrier();
         const body = Buffer.from(JSON.stringify(payload));
-        // Fanout ignora a routing key no broker; mantemos na mensagem p/ filtro do consumer.
         channel.publish(EXCHANGE, routingKey, body, {
           contentType: 'application/json',
           messageId: randomUUID(),
@@ -104,18 +120,38 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
 
     const channel = this.channel;
     const interest = new Set(interestKeys);
+    const deadLetter = dlqName(queue);
 
-    await channel.assertQueue(queue, { durable: true });
-    // Fanout: um bind por fila (routing key do bind é ignorada).
+    await channel.assertQueue(deadLetter, { durable: true });
+    await channel.bindQueue(deadLetter, DLX_EXCHANGE, '');
+
+    try {
+      await channel.assertQueue(queue, {
+        durable: true,
+        arguments: {
+          'x-dead-letter-exchange': DLX_EXCHANGE,
+        },
+      });
+    } catch (error) {
+      this.log.error('queue_assert_failed_recreate_needed', {
+        queue,
+        hint: 'Delete old queues in RabbitMQ UI or: rabbitmqctl delete_queue ' + queue,
+        error: errorMessage(error),
+      });
+      throw error;
+    }
+
     await channel.bindQueue(queue, EXCHANGE, '');
 
     await channel.consume(queue, (msg) => {
       void this.handleConsumedMessage(msg, queue, interest, handler);
     });
 
-    this.log.info('subscribed (fanout)', {
+    this.log.info('subscribed (fanout+dlq)', {
       queue,
+      dlq: deadLetter,
       interest: interestKeys.join(','),
+      prefetch: PREFETCH,
     });
   }
 
@@ -157,8 +193,10 @@ export class RabbitMqService implements OnModuleInit, OnModuleDestroy {
               channel.ack(msg);
             } catch (error) {
               recordMessagingConsumed(getServiceName(), routingKey, 'error');
-              this.log.error('failed processing message', {
+              this.log.error('failed processing message → DLQ', {
                 routingKey,
+                queue,
+                dlq: dlqName(queue),
                 error: errorMessage(error),
               });
               channel.nack(msg, false, false);

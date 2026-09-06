@@ -12,7 +12,7 @@ apps/
 Web ──HTTP──► API Gateway ──RMQ RPC──► Booking / Trip / Payment
                                     │
                          Fanout bus.fanout → Trip | Booking | Notification
-                                    └──► Mailhog (:8025)
+                                    └──► Mailpit (:8025)
 ```
 
 ## Subir
@@ -29,7 +29,7 @@ pnpm dev
 | http://localhost:3000 | Web |
 | http://localhost:3001 | API Gateway |
 | http://localhost:3005 | Grafana (Prometheus / Loki / Tempo via OTLP) |
-| http://localhost:8025 | Mailhog (e-mails do notification-service) |
+| http://localhost:8025 | Mailpit (e-mails do notification-service) |
 | http://localhost:15672 | RabbitMQ UI (bus/bus) |
 
 Apps exportam OTEL para `:4318`. Logs JSON no stdout incluem `traceId`.

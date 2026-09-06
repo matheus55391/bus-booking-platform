@@ -48,6 +48,14 @@ export class HoldStoreService implements OnModuleDestroy {
     return raw ? (JSON.parse(raw) as SeatHold) : null;
   }
 
+  /** Retorna hold id se o assento ainda estiver sob NX no Redis. */
+  async getHoldIdBySeat(
+    tripId: string,
+    seatId: string,
+  ): Promise<string | null> {
+    return this.redis.get(KEY.seat(tripId, seatId));
+  }
+
   async getByIdempotencyKey(idempotencyKey: string): Promise<SeatHold | null> {
     const id = await this.redis.get(KEY.idem(idempotencyKey));
     if (!id) return null;
