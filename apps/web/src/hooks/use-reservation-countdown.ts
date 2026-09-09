@@ -1,14 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getReservation } from '@/api';
-import type { Reservation } from '@/types';
+import { ReservationStatus, type Reservation } from '@/types';
 
 export function useReservationCountdown(
   reservation: Reservation | null,
-  onRefresh?: (reservation: Reservation) => void,
+  options?: {
+    onRefresh?: (reservation: Reservation) => void;
+    onExpire?: () => void;
+  },
 ) {
   const [now, setNow] = useState(() => Date.now());
+  const expiredForId = useRef<string | null>(null);
+  const onRefresh = options?.onRefresh;
+  const onExpire = options?.onExpire;
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -18,8 +24,8 @@ export function useReservationCountdown(
   useEffect(() => {
     if (
       !reservation ||
-      (reservation.status !== 'RESERVED' &&
-        reservation.status !== 'PENDING_PAYMENT') ||
+      (reservation.status !== ReservationStatus.Reserved &&
+        reservation.status !== ReservationStatus.PendingPayment) ||
       !onRefresh
     ) {
       return;
@@ -35,6 +41,23 @@ export function useReservationCountdown(
   const remainingMs = reservation
     ? Math.max(0, new Date(reservation.expiresAt).getTime() - now)
     : 0;
+
+  useEffect(() => {
+    if (!reservation || !onExpire) return;
+    if (
+      reservation.status !== ReservationStatus.Reserved &&
+      reservation.status !== ReservationStatus.PendingPayment
+    ) {
+      return;
+    }
+    if (remainingMs > 0) {
+      expiredForId.current = null;
+      return;
+    }
+    if (expiredForId.current === reservation.id) return;
+    expiredForId.current = reservation.id;
+    onExpire();
+  }, [reservation, remainingMs, onExpire]);
 
   const remainingLabel = `${Math.floor(remainingMs / 60000)}:${String(
     Math.floor((remainingMs % 60000) / 1000),

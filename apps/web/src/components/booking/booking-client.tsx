@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ClockAlert } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import {
   useCreatePayment,
@@ -10,6 +11,7 @@ import {
 } from '@/hooks';
 import type { PassengerFormInput } from '@/schemas';
 import type { Payment, Reservation, SeatsResponse } from '@/types';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { CheckoutPanel } from './checkout-panel';
@@ -24,15 +26,25 @@ export function BookingClient({ tripId, initialSeats }: Props) {
   const [reservation, setReservation] = useState<Reservation | null>(null);
   const [payment, setPayment] = useState<Payment | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [holdExpired, setHoldExpired] = useState(false);
 
   const seatsQuery = useTripSeats(tripId, initialSeats);
+  const refetchSeats = seatsQuery.refetch;
   const onRefresh = useCallback((next: Reservation) => {
     setReservation(next);
   }, []);
-  const { remainingMs, remainingLabel } = useReservationCountdown(
-    reservation,
+
+  const onExpire = useCallback(() => {
+    setReservation(null);
+    setPayment(null);
+    setHoldExpired(true);
+    void refetchSeats();
+  }, [refetchSeats]);
+
+  const { remainingMs, remainingLabel } = useReservationCountdown(reservation, {
     onRefresh,
-  );
+    onExpire,
+  });
 
   const reserveMutation = useCreateReservation({
     tripId,
@@ -40,6 +52,7 @@ export function BookingClient({ tripId, initialSeats }: Props) {
       setReservation(created);
       setPayment(null);
       setError(null);
+      setHoldExpired(false);
     },
     onError: (err) => setError(err.message),
   });
@@ -85,6 +98,17 @@ export function BookingClient({ tripId, initialSeats }: Props) {
         </Link>
       </header>
 
+      {holdExpired ? (
+        <Alert variant="destructive">
+          <ClockAlert />
+          <AlertTitle>Tempo esgotado</AlertTitle>
+          <AlertDescription>
+            Sua reserva temporária expirou e o assento foi liberado. Escolha
+            novamente um assento livre para continuar.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {error ? (
         <p
           role="alert"
@@ -100,8 +124,8 @@ export function BookingClient({ tripId, initialSeats }: Props) {
             Assentos
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Clique em um assento livre: ele fica reservado para você por 1
-            minuto.
+            Clique em um assento livre: ele fica reservado para você por 10
+            minutos.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
             {seatsData.summary.available} livres · {seatsData.summary.held}{' '}

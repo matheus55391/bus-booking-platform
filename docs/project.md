@@ -45,7 +45,7 @@ Monorepo (pnpm + Turbo) com:
    - grava hold no **Redis** (`SET NX` + TTL);
    - publica `seat.reserved` via outbox (notificação / projeção).
 4. **Ainda não existe** `Reservation` no Postgres.
-5. UI mostra countdown do TTL (curto em dev, via `RESERVATION_HOLD_TTL_SECONDS`).
+5. UI mostra countdown do TTL (10 min em dev, via `RESERVATION_HOLD_TTL_SECONDS`).
 
 **E se falhar?** Assento já HELD e Redis falha → Booking pede `trip.release-seat`. Duas abas com a mesma key → replay idempotente.
 

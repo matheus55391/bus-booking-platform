@@ -28,7 +28,7 @@ export class HoldStoreService implements OnModuleDestroy {
       lazyConnect: false,
     });
     this.ttlSeconds = Number(
-      config.get<string>('RESERVATION_HOLD_TTL_SECONDS') ?? 60,
+      config.get<string>('RESERVATION_HOLD_TTL_SECONDS') ?? 600,
     );
     if (!Number.isFinite(this.ttlSeconds) || this.ttlSeconds <= 0) {
       throw new Error('RESERVATION_HOLD_TTL_SECONDS must be a positive number');

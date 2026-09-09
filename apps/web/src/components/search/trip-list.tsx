@@ -8,9 +8,10 @@ import { Card, CardContent } from '@/components/ui/card';
 
 type Props = {
   result: SearchResponse;
+  title?: string;
 };
 
-export function TripList({ result }: Props) {
+export function TripList({ result, title }: Props) {
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
@@ -20,7 +21,9 @@ export function TripList({ result }: Props) {
             {result.query.date}
           </p>
           <h2 className="font-[family-name:var(--font-heading)] text-2xl font-bold tracking-tight">
-            {result.count} {result.count === 1 ? 'resultado' : 'resultados'}
+            {title
+              ? `${title} · ${result.count} ${result.count === 1 ? 'resultado' : 'resultados'}`
+              : `${result.count} ${result.count === 1 ? 'resultado' : 'resultados'}`}
           </h2>
         </div>
         <div className="flex flex-wrap gap-2">

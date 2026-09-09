@@ -5,7 +5,11 @@ import { ArrowLeftRight, CalendarDays, MapPin, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
 import { resolveCityValue } from '@/data/locations';
-import { searchTripsSchema, type SearchTripsInput } from '@/schemas';
+import {
+  searchTripsSchema,
+  TripType,
+  type SearchTripsInput,
+} from '@/schemas';
 import { CityCombobox } from '@/components/search/city-combobox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,11 +32,18 @@ export function SearchForm({ defaults, compact = false }: Props) {
     formState: { errors, isSubmitting },
   } = useForm<SearchTripsInput>({
     resolver: zodResolver(searchTripsSchema),
-    defaultValues: defaults,
+    defaultValues: {
+      ...defaults,
+      tripType: defaults.tripType ?? TripType.OneWay,
+      returnDate: defaults.returnDate ?? '',
+    },
   });
 
   const origin = watch('origin');
   const destination = watch('destination');
+  const tripType = watch('tripType');
+  const outboundDate = watch('date');
+  const isRoundTrip = tripType === TripType.RoundTrip;
 
   function swapCities() {
     setValue('origin', destination, { shouldValidate: true });
@@ -44,7 +55,11 @@ export function SearchForm({ defaults, compact = false }: Props) {
       origin: resolveCityValue(values.origin),
       destination: resolveCityValue(values.destination),
       date: values.date,
+      tripType: values.tripType,
     });
+    if (values.tripType === TripType.RoundTrip && values.returnDate) {
+      params.set('returnDate', values.returnDate);
+    }
     router.push(`/?${params.toString()}`);
   }
 
@@ -62,29 +77,38 @@ export function SearchForm({ defaults, compact = false }: Props) {
           <h2 className="font-[family-name:var(--font-heading)] text-xl font-bold tracking-tight sm:text-2xl">
             Compre sua passagem de ônibus
           </h2>
-          <div className="flex items-center gap-4 text-sm font-medium">
-            <span className="inline-flex items-center gap-2 text-foreground">
-              <span
-                className="flex size-4 items-center justify-center rounded-full bg-primary"
-                aria-hidden
-              >
-                <span className="size-1.5 rounded-full bg-primary-foreground" />
-              </span>
-              Somente ida
-            </span>
-            <span className="inline-flex items-center gap-2 text-muted-foreground">
-              <span
-                className="size-4 rounded-full border-2 border-muted-foreground/40"
-                aria-hidden
-              />
-              Ida e volta
-            </span>
+          <div
+            className="flex items-center gap-4 text-sm font-medium"
+            role="radiogroup"
+            aria-label="Tipo de viagem"
+          >
+            <TripTypeOption
+              selected={tripType === TripType.OneWay}
+              onSelect={() =>
+                setValue('tripType', TripType.OneWay, { shouldValidate: true })
+              }
+              label="Somente ida"
+            />
+            <TripTypeOption
+              selected={isRoundTrip}
+              onSelect={() => {
+                setValue('tripType', TripType.RoundTrip, {
+                  shouldValidate: true,
+                });
+                if (!watch('returnDate')) {
+                  setValue('returnDate', outboundDate, {
+                    shouldValidate: true,
+                  });
+                }
+              }}
+              label="Ida e volta"
+            />
           </div>
         </div>
       ) : null}
 
       <div className="flex flex-col gap-3 overflow-visible lg:flex-row lg:items-stretch lg:gap-3">
-        <div className="relative z-20 flex min-w-0 flex-1 flex-col overflow-visible rounded-2xl border border-border bg-card sm:flex-row">
+        <div className="relative z-20 flex min-w-0 flex-1 flex-col overflow-visible rounded-2xl border border-border bg-card sm:flex-row sm:flex-wrap lg:flex-nowrap">
           <Field
             label="Origem"
             invalid={Boolean(errors.origin)}
@@ -98,7 +122,7 @@ export function SearchForm({ defaults, compact = false }: Props) {
               />
             }
             className={cn(
-              'rounded-2xl sm:rounded-none sm:rounded-l-2xl',
+              'rounded-2xl sm:rounded-none sm:rounded-l-2xl sm:basis-[calc(50%-1.25rem)] lg:basis-0 lg:flex-1',
               errors.origin && 'border border-destructive',
             )}
           >
@@ -147,7 +171,7 @@ export function SearchForm({ defaults, compact = false }: Props) {
               />
             }
             className={cn(
-              'border-t sm:border-t-0 sm:border-l',
+              'border-t sm:border-t-0 sm:border-l sm:basis-[calc(50%-1.25rem)] lg:basis-0 lg:flex-1',
               errors.destination && 'border border-destructive sm:border',
             )}
           >
@@ -184,7 +208,8 @@ export function SearchForm({ defaults, compact = false }: Props) {
               />
             }
             className={cn(
-              'rounded-2xl border-t sm:rounded-none sm:rounded-r-2xl sm:border-t-0 sm:border-l',
+              'border-t sm:border-t-0 sm:border-l sm:basis-1/2 lg:basis-0 lg:flex-1',
+              !isRoundTrip && 'rounded-2xl sm:rounded-none sm:rounded-r-2xl',
               errors.date && 'border border-destructive sm:border',
             )}
           >
@@ -198,6 +223,38 @@ export function SearchForm({ defaults, compact = false }: Props) {
               )}
             />
           </Field>
+
+          {isRoundTrip ? (
+            <Field
+              label="Volta"
+              invalid={Boolean(errors.returnDate)}
+              icon={
+                <CalendarDays
+                  className={cn(
+                    'size-4 shrink-0',
+                    errors.returnDate ? 'text-destructive' : 'text-primary',
+                  )}
+                  aria-hidden
+                />
+              }
+              className={cn(
+                'rounded-2xl border-t sm:rounded-none sm:rounded-r-2xl sm:border-t-0 sm:border-l sm:basis-1/2 lg:basis-0 lg:flex-1',
+                errors.returnDate && 'border border-destructive sm:border',
+              )}
+            >
+              <Input
+                type="date"
+                min={outboundDate || undefined}
+                {...register('returnDate')}
+                aria-invalid={Boolean(errors.returnDate)}
+                className={cn(
+                  'h-10 border-0 bg-transparent px-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 aria-invalid:border-0 aria-invalid:ring-0',
+                  errors.returnDate &&
+                    'text-destructive placeholder:text-destructive',
+                )}
+              />
+            </Field>
+          ) : null}
         </div>
 
         <Button
@@ -211,6 +268,44 @@ export function SearchForm({ defaults, compact = false }: Props) {
         </Button>
       </div>
     </form>
+  );
+}
+
+function TripTypeOption({
+  selected,
+  onSelect,
+  label,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={cn(
+        'inline-flex items-center gap-2 transition-colors',
+        selected ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+      )}
+    >
+      <span
+        className={cn(
+          'flex size-4 items-center justify-center rounded-full',
+          selected
+            ? 'bg-primary'
+            : 'border-2 border-muted-foreground/40',
+        )}
+        aria-hidden
+      >
+        {selected ? (
+          <span className="size-1.5 rounded-full bg-primary-foreground" />
+        ) : null}
+      </span>
+      {label}
+    </button>
   );
 }
 

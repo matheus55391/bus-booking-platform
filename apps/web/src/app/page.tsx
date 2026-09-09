@@ -1,18 +1,22 @@
 import { searchTrips } from '@/api';
 import { SearchForm } from '@/components/search/search-form';
 import { TripList } from '@/components/search/trip-list';
-import { searchTripsSchema } from '@/schemas';
+import { searchTripsSchema, TripType } from '@/schemas';
 
 type SearchParams = Promise<{
   origin?: string;
   destination?: string;
   date?: string;
+  tripType?: string;
+  returnDate?: string;
 }>;
 
 const defaults = {
   origin: 'Aracaju',
   destination: 'Salvador',
   date: '2026-09-10',
+  tripType: TripType.OneWay,
+  returnDate: '',
 };
 
 export default async function HomePage({
@@ -26,16 +30,33 @@ export default async function HomePage({
     origin: raw.origin ?? defaults.origin,
     destination: raw.destination ?? defaults.destination,
     date: raw.date ?? defaults.date,
+    tripType: raw.tripType ?? defaults.tripType,
+    returnDate: raw.returnDate ?? defaults.returnDate,
   });
 
   const formDefaults = parsed.success ? parsed.data : defaults;
+  const isRoundTrip =
+    parsed.success && parsed.data.tripType === TripType.RoundTrip;
 
-  let result = null;
+  let outbound = null;
+  let inbound = null;
   let error: string | null = null;
 
   if (hasQuery && parsed.success) {
     try {
-      result = await searchTrips(parsed.data);
+      outbound = await searchTrips({
+        origin: parsed.data.origin,
+        destination: parsed.data.destination,
+        date: parsed.data.date,
+      });
+
+      if (isRoundTrip && parsed.data.returnDate) {
+        inbound = await searchTrips({
+          origin: parsed.data.destination,
+          destination: parsed.data.origin,
+          date: parsed.data.returnDate,
+        });
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Falha na busca';
     }
@@ -65,7 +86,11 @@ export default async function HomePage({
         </p>
       ) : null}
 
-      {result ? <TripList result={result} /> : null}
+      {outbound ? (
+        <TripList result={outbound} title={isRoundTrip ? 'Ida' : undefined} />
+      ) : null}
+
+      {inbound ? <TripList result={inbound} title="Volta" /> : null}
     </div>
   );
 }

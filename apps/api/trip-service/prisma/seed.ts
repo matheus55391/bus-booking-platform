@@ -85,6 +85,26 @@ async function main() {
       soldLabels: ['7', '8', '21'],
       heldLabels: ['1'],
     },
+    {
+      origin: 'Salvador',
+      destination: 'Aracaju',
+      departureAt: new Date('2026-09-11T09:00:00.000Z'),
+      arrivalAt: new Date('2026-09-11T15:30:00.000Z'),
+      priceCents: 9200,
+      companyName: 'Nordeste Express',
+      soldLabels: ['2', '3'],
+      heldLabels: [],
+    },
+    {
+      origin: 'Salvador',
+      destination: 'Aracaju',
+      departureAt: new Date('2026-09-12T14:00:00.000Z'),
+      arrivalAt: new Date('2026-09-12T20:15:00.000Z'),
+      priceCents: 8500,
+      companyName: 'Costa Verde',
+      soldLabels: ['10'],
+      heldLabels: [],
+    },
   ];
 
   for (const trip of trips) {
